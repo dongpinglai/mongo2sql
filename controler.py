@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 # by: laidongping2006@sina.com
 
@@ -23,20 +23,3 @@ class Controler(object):
 
 class SingleMethodControler(Controler):
     pass
-
-    
-
-class Transformer(object):
-    def __init__(self, db, coll, methods):
-        self.db = db
-        self.coll = coll
-        self.methods = methods
-
-    def transform_control(self):
-        # controler instance
-        
-
-
-class ControlError(Exception):
-    pass
-    

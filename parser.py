@@ -5,19 +5,12 @@
 import re
 import MySQLdb
 
-coll_methods = ['insert', 'find', 'findOne', 'update',
-                'drop', 'limit', 'createIndex', 'dropIndex',
-                'dropIndexes', 'count', 'distinct', 'group',
-                'remove', 'aggregate', 'mapReduce', 'ensureIndex',
-                'skip', 'sort']
 
 def parse(statement):
     parts = re.split(r'\.', statement)
     db = parts[0]
     coll = parts[1]
-    methods = []
-    criterias = []
-    for part in parts[2:]:
+    for part in parts[2:]: 
         
         
    
