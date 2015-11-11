@@ -39,20 +39,7 @@ class SQLSchema(object):
             pass
         if 'remove' in op_names:
             pass
-    def query_anylize(self, op_names):
-       find_args = self.ops['find']
-       operators = []
-       for op in op_names[1:]:
-           operators.append(op)
-        #if args is []:
-         #   fmt = 'select * from {0}'.formt(self.table_name)
-          #  print fmt
-           # return fmt
-        criterias = find_args[0]
-        projections = find_args[1]
-        options = find_args[2]
-        
-            
+                
             
         
         
