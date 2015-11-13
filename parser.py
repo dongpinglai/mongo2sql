@@ -2,7 +2,8 @@
 # -*- encoding: utf-8 -*-
 # by: laidongping2006@sina.com
 '''
-input a mongodb statement, output metadata(db, coll, ops)
+input a mongodb statement, output metadata(db, coll, ops) etc.
+To improve the module, patterns needn't to write in every class, can write as  global vars.
 '''
 
 import re
@@ -38,20 +39,20 @@ class RParser(Parser):
     """parser mongo's find statement"""
     
     def parse_args(self):
-        ARGS_PATTERN = r'\s*(\{.*\})?\s*,?\s*(\{.*\})?\s*,?\s*(\{.*\})?\s*'
-        CRITERIA_PATTERN = r'\s*(.*)\s*:\s*(([\'"]).*(?(1)\3))\s*'|r'\s*(\w*)\s*:\s*(([\{]).*(?(1)\3))\s*'|r'\s*(\w*)\s*:\s*(([\[]).*(?(1)\3))\s*'
+        ARGS_PATTERN = r'\s*(.*)?\s*,?\s*(.*)?\s*,?\s*(.*)?\s*'
+        CRITERIA_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
         PROJECTION_PARTTERN = r'\s*(.*)\s*:\s*(\d*)\s*'
         OPTION_PARTTERN = r'\s*(.*)\s*:\s*(.*)\s*'
-
+        
         self.criteria_dict = {}
         self.projection_dict = {}
         self.option_dict = {}
-        args = self.ops['find']
+        find_args = self.ops['find']
         if args != '':
-            args_m = re.match(ARGS_PATTERN, args)
-            criteria = m.group(1)
-            projection = m.group(2)
-            option = m.group(3) 
+            find_args_m = re.match(ARGS_PATTERN, find_args)
+            find_criteria = find_args_m.group(1)
+            projection = find_args_m.group(2)
+            option = find_args_m.group(3) 
             criteria_m = re.finditer(CRITERIA_PATTERN, crireria)
             projection_m = re.finditer(PROJECTION_PATTEN, projection)
             option_m = re.finditer(OPTION_PATTERN, option)
@@ -69,6 +70,17 @@ class RParser(Parser):
                 o_value = om.grouup(2)
                 self.option_dict[o_field] = o_value
         
+        if self.op_name_exists('sort'):
+            self.sort_criteria_dict = {}
+            sort_args = self.ops['sort']
+            if sort_args != '':
+                sort_criteria_m = re.finditer(CRITERIA_PATTERN, sort_args)
+                for s_c_field, s_c_value in sort_criteria_m:
+                    self.sort_criteria_dict[s_c_field] =  s_c_value
+
+        if self.op_name_exists('limit'):
+            self.limit_arg  = self.ops['limit']
+                
     
 
 class CParser(Parser):
@@ -90,9 +102,9 @@ class UParser(Parser):
     """pase mongo's update statment"""
 
     def parse_args(self):
-        ARGS_PATTERN = r'\S*(\{.*\})?\S*,?\S*(\{.*\})\S*,?\S*(\{.*\})?\S*'
+        ARGS_PATTERN = r'\s*(.*)?\s*,?\s*(.*)\s*,?\s*(.*)?\s*'
         CRITERIA_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
-        OPERATION_PATTERN = r'\s*(\$\w*)\s*:\s*(.*)\s*'
+        OPERATION_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
         OPTION_PATTERN = r'\s*(.*):\s*(.*)\s*'
         self.criteria_dict = {}
         self.operation_dict = {}
