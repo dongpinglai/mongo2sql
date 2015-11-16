@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-# by: laidongping2006@sina.com
-
+# created by: laidongping2006@sina.com at 12th Nov 2015
 
 #?import inspect 
 import re
@@ -25,12 +24,12 @@ class SQLSchema(object):
    
                
   
-class RSchema(SQLSchema):
+class RSQLSchema(SQLSchema):
     """according to RParser's attributes selecting different sql statements."""
 
 
     
-    def map_sql(self):
+    def map__to_sql(self):
         db = self.parser.db
         table_name = self.parser.coll
         ops = self.parser.ops
@@ -38,7 +37,6 @@ class RSchema(SQLSchema):
         criteria_dict = self.parser.criteria_dict
         projection_dict = self.parser.projection_dcit
         option_dict = self.parser.option_dict
-
     
         #'select ... from ... [where]...'    
         if not self.parser.op_name_exists('sort') and self.parser.self.parser.op_name_exists('limit'):
@@ -52,12 +50,15 @@ class RSchema(SQLSchema):
                     
             else: #'select ... from ... where ...'
                 if projection_dict == {}: # 'select * from ... where '
-                    #check criteria is or/and
-                    pass
-                    #{$or: [...,...]} use defaultdict(list)
-                    #{$lt:{status: 'A'}} as the whole thing
+                    for criteria_key, criteria_value in self.parser.criteria_dict.items():
+                        
 
-                    #or_fmt = 'or'.join(['{0}={1}' for key, value in or_dict.items])
+                        
+
+                        
+                   
+                    pass
+                   
                
 
                 else: #select XXX from ....where ...'
@@ -81,3 +82,9 @@ class RSchema(SQLSchema):
     
     
 
+def main():
+    pass
+
+
+if __name__ == '__main__':
+    main()

@@ -1,12 +1,41 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-# by: laidongping2006@sina.com
+# created by: laidongping2006@sina.com at 12th Nov 2015
 '''
 input a mongodb statement, output metadata(db, coll, ops) etc.
 To improve the module, patterns needn't to write in every class, can write as  global vars.
 '''
 
 import re
+
+
+def parse_criteria_value(c_value):
+    if c_value.startswith('['): # e.g: {$or: [{}, ..]}
+        c_value_list = []
+        C_VALUE_LIST_PATTERN = r'\s*((.*)\s*,?)\s*'
+        c_value_list_m = re.finditer(C_VALUE_LIST_PATTERN, c_value)
+        for c_v_l_m in c_value_list_m:
+            c_v_l = c_v_l_m.group(2)
+            c_v_l = parse_criteria_value(c_v_l)
+            c_value_list.append(c_v_l)
+
+            return c_value_list
+
+    elif c_value.startswith('{'): # e.g: {XXX:{$lt:XX}}
+        c_value_dict = {}
+        C_VALUE_DICT__PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
+        c_value_dict_m = re.finditer(C_VALUE_DICT_PATTERN, c_value)
+        for c_v_d_m in c_value_dict_m:
+            c_v_field = c_v_d_m.group(1)
+            c_v_value = c_v_d_m.group(2)
+            c_v_value = parse_criteria_value(c_v_value)
+            c_value_dict[c_v_field] = c_v_value
+                    
+            return c_value_dict
+
+    else: # e.g: {XXX: XX}
+        return c_value
+                    
 
 
 class Parser(object):
@@ -53,6 +82,7 @@ class RParser(Parser):
             find_criteria = find_args_m.group(1)
             projection = find_args_m.group(2)
             option = find_args_m.group(3) 
+
             criteria_m = re.finditer(CRITERIA_PATTERN, crireria)
             projection_m = re.finditer(PROJECTION_PATTEN, projection)
             option_m = re.finditer(OPTION_PATTERN, option)
@@ -60,11 +90,14 @@ class RParser(Parser):
             for cm in criteria_m:
                 c_field = cm.group(1)
                 c_value = cm.group(2)
+                c_value = parse_criteria(c_value)
                 self.criteria_dict[c_field] = c_value
+
             for pm in projection_m:
                 p_field = pm.group(1)
                 p_value = pm.group(2)
                 self.projection_dict[p_field] = p_value
+
             for om in option_m:
                 o_field = om.group(1)
                 o_value = om.grouup(2)
@@ -101,6 +134,7 @@ class CParser(Parser):
 class UParser(Parser):
     """pase mongo's update statment"""
 
+    
     def parse_args(self):
         ARGS_PATTERN = r'\s*(.*)?\s*,?\s*(.*)\s*,?\s*(.*)?\s*'
         CRITERIA_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
@@ -127,11 +161,14 @@ class UParser(Parser):
             for cm in criteria_m:
                 c_field = cm.group(1)
                 c_value = cm.group(2)
+                c_value = parse_criteria_value(c_value)
                 self.criteria_dict[c_field] = c_value
+
             for opm in operation_m:
                 op_field = opm.group(1)
                 op_value = opm.group(2)
                 self.operation_dict[op_field] = op_value
+
             for om in option_m:
                 o_field = om.group(1)
                 o_value = om.group(2)
@@ -161,6 +198,7 @@ class DParser(Parser):
             for cm in criteria_m:
                 c_field = cm.group(1)
                 c_value = cm.group(2)
+                c_value = parse_criteria_value(c_value)
                 self.criteria_dict[c_field] = c_value
             for om in option_m:
                 o_field = om.group(1)
@@ -190,6 +228,7 @@ class IndexParser(Parser):
             for c_cm in c_criteria_m:
                 c_c_field = c_cm.group(1)
                 c_c_value = c_cm.group(2)
+                c_c_value = parse_criteria_value(c_c_value)
                 self.c_criteria_dict[c_c_field] = c_c_value
             for c_om in c_option_m:
                 c_o_field = c_om.group(1)
@@ -205,6 +244,7 @@ class IndexParser(Parser):
             for dr_cm in dr_criteria_m:
                 dr_c_field = dr_cm.group(1)
                 dr_c_value = dr_cm.group(2)
+                dr_c_value = parse_criteria_value(dr_c_value)
                 self.dr_criteria_dict[dr_c_field] = dr_c_value
 
 
