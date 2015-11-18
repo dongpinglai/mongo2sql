@@ -76,6 +76,7 @@ class RParser(Parser):
         self.criteria_dict = {}
         self.projection_dict = {}
         self.option_dict = {}
+
         find_args = self.ops['find']
         if args != '':
             find_args_m = re.match(ARGS_PATTERN, find_args)
