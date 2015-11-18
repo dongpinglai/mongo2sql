@@ -2,10 +2,16 @@
 # -*- encoding: utf-8 -*-
 # created by: laidongping2006@sina.com at 12th Nov 2015
 
-#?import inspect 
+
 import re
 
+def criteria_schema(adict):
+    pass
+            
 
+
+
+    
         
 class SQLSchema(object):
    

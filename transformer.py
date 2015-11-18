@@ -3,18 +3,14 @@
 # by: laidongping2006@sina.com
 
 import parser
-import controler    
+import sqlalchemy
+import inspect
+
+
 
 class Transformer(object):
-    def __init__(self, statement):
-        #parser calling
-        self.db = db
-        self.coll = coll
-        self.methods = methods
+    pass
 
-    def transform(self):
-        # controler calling
-        pass
 
         
     

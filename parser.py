@@ -89,7 +89,7 @@ class RParser(Parser):
              
             for cm in criteria_m:
                 c_field = cm.group(1)
-                c_value = cm.group(2)
+                 c_value = cm.group(2)
                 c_value = parse_criteria(c_value)
                 self.criteria_dict[c_field] = c_value
 
