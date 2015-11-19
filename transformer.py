@@ -27,9 +27,9 @@ class Transformer(object):
             self.parse_remove()
 
     def parse_find(self):
-        criteria_dict = {}
+        #criteria_dict = {}
         projection_dict = {}
-        option_dict = {}
+        
         if self.option_ops == '':
             ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
                       
@@ -37,10 +37,13 @@ class Transformer(object):
             projection = re.match(ARGS_PATTERN, self.args).group(4) # projection string
            # option = re.match(ARGS_PATTERN, self.args).group(6) # option string
             if projection == '':
-                pass
+                c_fmt = self.handle_criteria(criteria)
+                if criteria == '':
+                    return 'select * from {0}'.format(self.coll)
+                return 'select * from {0} where {1}'.format(self.coll, c_fmt)
             else:
                 PROJECTION_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
-                projection_m_iter = re.finditer(PROJECTION_PATTERN, option)
+                projection_m_iter = re.finditer(PROJECTION_PATTERN, projection)
                 for  p_m in projection_m_iter:
                     p_field = p_m.group(1)
                     p_value = p_m.group(2)
@@ -49,12 +52,52 @@ class Transformer(object):
                 if criteria == '':
                     return 'select {0} from {1}'.format(p_fmt, self.coll)
 
-                #self.handle_criteria()
+                c_fmt = self.handle_criteria(criteria)
+                return 'select {0} from {1} where {2}'.format(p_fmt, self.coll, c_fmt)
 
                     
         else:
+            option_op_fmt = handle_option_ops(self.option_ops)
             pass
+
+
+
             
+        def handle_option_ops(opsting):
+            """opsting -> option_dict -> option_fmt """
+            
+           
+            OPTION_PATTERN = r'\.(\w+)\(\s*(.*)\s*\)'
+            option_m_iter = re.finditer(OPTION_PATTERN, opstring)
+            option_fmt = []
+            for o_m in option_m_iter:
+                option_op_name = o_m.group(1)
+                option_op_args = o_m.group(2)
+                option_dict[option_op_name] = option_op_args
+            for op, op_args in option_dict.items():
+                if op == 'sort':
+                    
+                    OP_ARGS_PATTERN = r'\s*(\w+)\s*:\s*(1|0)\s*'
+                    op_args_m_iter = re.finditer(OP_ARGS_PATTERN, op_args)
+                    for op_args_m in op_args_m_iter:
+                        sort_op_name = op_args_m.group(1)
+                        sort_op_value = op_args_m.group(2)
+                        if sort_op_value == '1':
+                           option_fmt.append('{0}'.format(sort_op_name))
+                        if sort_op_value == '0':
+                            option_fmt.append('{0} desc'.format(sort_op_name))
+                    
+                    option_fmt = 'order by' + ','.join(option_fmt)
+                                        
+                    
+                if op == 'limit':
+                    option_fmt = option_fmt + 'limit {0}'.format(op_args)
+                if op == 'skip':
+                    option_fmt = option_fmt + 'skip {0}'.format(op_args)
+                    
+            return option_fmt
+                
+
     def parse_insert(self):
         pass
 
@@ -65,28 +108,92 @@ class Transformer(object):
         pass
         
 
-    def handle_criteria_string_dict(self, astring):
-        PATTERN = r'(\s*(\$\w+)\s*:\s*(\[.*\])\s*|\s*(\$\w+)\s*:\s*(\{.*\})\s*|\s*()\s*:\s*()\s*)'
+    def handle_criteria(self, astring, callback = self.criteria_to_fmt):
+        PATTERN = r'(\s*(\$\w+)\s*:\s*(\[.*\])\s*|\s*(\w+)\s*:\s*(\{.*\})\s*|\s*(\w+)\s*:\s*(\w+)\s*)'
         criteria_dict = {}
-        pass
+        criteria_m = re.finditer(PATTERN, astring)
+        for c_m in criteria_m:
+            c_field  = c_m.group(1)
+            c_value =  c_m.group(2)
+            c_value = self.parse_criteria_value(c_value)
+            criteria_dict[c_field] = c_value
+        return callback(criteria_dict)
         
-        
-    def handle_criteria(adict):
-        fmt = ''
-        for key, value in adict.items:
-            if isinstance(value, list):
-              
-                for v in value:
-                   pass
+    def parse_criteria_value(c_value):
+        if c_value.startswith('['): # e.g: {$or: [{}, ..]}
+            c_value_list = []
+            C_VALUE_LIST_PATTERN = r'\s*((.*)\s*,?)\s*'
+            c_value_list_m = re.finditer(C_VALUE_LIST_PATTERN, c_value)
+            for c_v_l_m in c_value_list_m:
+                c_v_l = c_v_l_m.group(2)
+                c_v_l = parse_criteria_value(c_v_l)
+                c_value_list.append(c_v_l)
+ 
+            return c_value_list
+
+        elif c_value.startswith('{'): # e.g: {XXX:{$lt:XX}}
+            c_value_dict = {}
+            C_VALUE_DICT__PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
+            c_value_dict_m = re.finditer(C_VALUE_DICT_PATTERN, c_value)
+            for c_v_d_m in c_value_dict_m:
+                c_v_field = c_v_d_m.group(1)
+                c_v_value = c_v_d_m.group(2)
+                c_v_value = parse_criteria_value(c_v_value)
+                c_value_dict[c_v_field] = c_v_value
                     
-                fmt = ' ' + key.translate(None, '$') + ' '.join(v_list)
-            elif isinstance(value, dict):
-                v_dict = {}
-                for v_key, v_value in value.iterms:
-                    v_value = handle_criteria(v_value)
-                    pass
+            return c_value_dict
+
+        else: # e.g: {XXX: XX}
+            return c_value
+                    
+
+        
+    def criteria_to_fmt(self, adict):
+        for field, value in adict.items:
+            fmt_list = []
+            if isinstance(value, list):
+                c_l = []
+                for vl in value:
+                    c_l.append(self.check_criteria(v1))
+                if field == '$or':
+                    c_l = ' or '.join(c_1)
+                if field == '$and':
+                    c_1 = ' and '.join(c_1)
+                    
+                fmt_list.append(c_l)
+            if isinstance(value, dict):
+                c_d = []
+                for k, v in value.items():
+                    if isinstance(v, dict):
+                        c_d.append(self.check_criteria(v))
+                    
+                    else:
+  
+                        if k == '$lt':
+                            c_d.append('{0}<{1}'.format(k, v))
+                        if k == '$lte':
+                            c_d.append('{0}<={1}'.format(k, v))
+                        if k == '$gt':
+                            c_d.append(return '{0}>{1}'.format(k, v))
+                        if k == '$gte':
+                            c_d.append(return '{0}>={1}'.format(k, v))
+                        if k == '$eq':
+                            c_d.append(return '{0}={1}'.format(k, v))
+                        if k == '$ne':
+                            c_d.append(return '{0}!={1}'.format(k, v))
+                        # may add other operators from here
+
+                c_d = ' and '.join(c_d)
+                fmt_list.append(c_d)
             else:
+                fmt_list.append('{0}={1}'.format(field, value))
+        return ' and '.join(fmt_list)
+           
+        
+
                 
+         
+    
             
             
                 
