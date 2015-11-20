@@ -29,43 +29,50 @@ class Transformer(object):
     def parse_find(self):
         #criteria_dict = {}
         projection_dict = {}
-        
-        if self.option_ops == '':
-            ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
-                      
-            criteria = re.match(ARGS_PATTERN, self.args).group(2) # criteria string
-            projection = re.match(ARGS_PATTERN, self.args).group(4) # projection string
-           # option = re.match(ARGS_PATTERN, self.args).group(6) # option string
-            if projection == '':
-                c_fmt = self.handle_criteria(criteria)
-                if criteria == '':
-                    return 'select * from {0}'.format(self.coll)
-                return 'select * from {0} where {1}'.format(self.coll, c_fmt)
-            else:
-                PROJECTION_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
-                projection_m_iter = re.finditer(PROJECTION_PATTERN, projection)
-                for  p_m in projection_m_iter:
-                    p_field = p_m.group(1)
-                    p_value = p_m.group(2)
-                    projection_dict[p_field] = p_value 
-                p_fmt = ','.join(key for key in projection_dict if projection[key] == 1]
-                if criteria == '':
-                    return 'select {0} from {1}'.format(p_fmt, self.coll)
+        option_op_fmt = handle_option_ops(self.option_ops)
 
-                c_fmt = self.handle_criteria(criteria)
-                return 'select {0} from {1} where {2}'.format(p_fmt, self.coll, c_fmt)
+        FIND_ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
+        criteria = re.match(FIND_ARGS_PATTERN, self.args).group(2) # criteria string
+        projection = re.match(FIND_ARGS_PATTERN, self.args).group(4) # projection string
+
+        if projection == '':
+            c_fmt = self.handle_criteria(criteria)
+            if criteria == '':
+                return 'select * from {0} {1}'.format(self.coll, option_op_fmt)
+
+            return 'select * from {0} where {1} {2}'.format(self.coll, c_fmt, option_op_format)
+        else:
+            PROJECTION_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
+            projection_m_iter = re.finditer(PROJECTION_PATTERN, projection)
+            for  p_m in projection_m_iter:
+                p_field = p_m.group(1)
+                p_value = p_m.group(2)
+                projection_dict[p_field] = p_value 
+
+            p_fmt = ','.join(key for key in projection_dict if projection[key] == 1]
+            if criteria == '':
+                return 'select {0} from {1} {2}'.format(p_fmt, self.coll, option_op_fmt)
+
+            c_fmt = self.handle_criteria(criteria)
+            return 'select {0} from {1} where {2} {3}'.format(p_fmt, self.coll, c_fmt, option_op_fmt)
 
                     
-        else:
-            option_op_fmt = handle_option_ops(self.option_ops)
-            pass
+       # else: #select [*|...] from ...[ where ...] [sort|limit|skip]
+        #    option_op_fmt = handle_option_ops(self.option_ops)
+         #   if  projection == '':
+          #      c_fmt = self.handle_criteria(criteria)
+           #     if criteria == '':
+            #        return 'select * from {0}'
+            
 
 
 
             
         def handle_option_ops(opsting):
             """opsting -> option_dict -> option_fmt """
-            
+            if opstring == '':
+                option_fmt = ''
+                return option_fmt
            
             OPTION_PATTERN = r'\.(\w+)\(\s*(.*)\s*\)'
             option_m_iter = re.finditer(OPTION_PATTERN, opstring)
@@ -74,6 +81,7 @@ class Transformer(object):
                 option_op_name = o_m.group(1)
                 option_op_args = o_m.group(2)
                 option_dict[option_op_name] = option_op_args
+
             for op, op_args in option_dict.items():
                 if op == 'sort':
                     
@@ -99,16 +107,79 @@ class Transformer(object):
                 
 
     def parse_insert(self):
-        pass
+        INSERT_ARGS_PATTERN = r'(^\[\s*(.*)\s*\]$|^\{\s*(.*)\s*\}$)'
+        insert_args_m = re.match(INSERT_ARGS_PATTERN, self.op_args)
+        insert_args = insert_args_m.group(0)
+        insert_args = handle_insert_args(insert_args)
+        insert_fmt = args_to_fmt(insert_args)
+        insert_fmt = 'insert into {0} values {1}'.format(self.coll, insert_fmt)
+        return insert_fmt
+        
+        def handle_insert_args(astring):
+            """a string -> list or dict"""
+            if astring.startswith('['):
+                args_list = []
+                MUL_PATTERN = r'\s*(\{.*\})'
+                m_iter = re.finditer(MUL_PATTERN, astring)
+                for m_m in m_iter:
+                    m_string = m_m.group(1)
+                    args_list.append(handle_insert_args(m_string))
+                return args_list
+                    
+            if astring.startswith('{'):
+                arg_dict = {}
+                SIN_PATTERN = r'\s*(\w+)\s*:\s*(\w+)\s*'
+                s_iter = re.finditer(SIN_PATTERN, astring)
+                for s_m in s_iter:
+                    field = s_m.group(1)
+                    value = s_m.group(2)
+                    arg_dict[field] = value
+                return arg_dict
+
+        def args_to_fmt(insert_args):
+            """ list or dict -> format string"""
+            if isinstance(insert_args, list):
+                mul_list = []
+                for i in insert_args:
+                    mul_list.append(args_to_fmt(i))
+                return ','.join(mul_list)
+            if isinstance(insert_args, dict):
+                sin_list = [] 
+                for k, v in insert_args.items:
+                    sin_list.append(v)
+                return '({0})'.format(','.join(sin_list))
+                   
+           
+                
 
     def parse_update(self):
-        pass
+        UPDATE_ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
+        update_criteria = re.match(UPDATE_ARGS_PATTERN, self.args).group(2) # criteria string
+        update_operations = re.match(UPDATE_ARGS_PATTERN, self.args).group(4) # operation string
+        option = re.match(UPDATE_ARGS_PATTERN, self.args).group(6) # option string
+        criteria_fmt = self.handle_criteria(update_criteria)
+        operations_fmt = handle_operations(update_operations)
+        option_fmt = handle_option(option)
+        update_fmt = 'update {0} set {1} where'.format(self.coll, operations_fmt, criteria_fmt)
+        return update_fmt
+
+        def handle_operations(astring):
+            """operations string -> operation format string"""
+            OPERATTIONS_PATTERN = r''
+            
+            pass
+        def handle_option(astring):
+            """option string -> option fromat string"""
+            pass
+        
 
     def parse_remove(self):
         pass
         
 
     def handle_criteria(self, astring, callback = self.criteria_to_fmt):
+        """criteria string -> datastructures -> where format string"""
+        
         PATTERN = r'(\s*(\$\w+)\s*:\s*(\[.*\])\s*|\s*(\w+)\s*:\s*(\{.*\})\s*|\s*(\w+)\s*:\s*(\w+)\s*)'
         criteria_dict = {}
         criteria_m = re.finditer(PATTERN, astring)
@@ -120,6 +191,7 @@ class Transformer(object):
         return callback(criteria_dict)
         
     def parse_criteria_value(c_value):
+        """ value string -> datastructures"""
         if c_value.startswith('['): # e.g: {$or: [{}, ..]}
             c_value_list = []
             C_VALUE_LIST_PATTERN = r'\s*((.*)\s*,?)\s*'
@@ -149,6 +221,7 @@ class Transformer(object):
 
         
     def criteria_to_fmt(self, adict):
+        """a dict -> format string"""
         for field, value in adict.items:
             fmt_list = []
             if isinstance(value, list):
