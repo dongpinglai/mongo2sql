@@ -8,13 +8,16 @@ import re
 
 class Transformer(object):
     def _init__(self, m_statement):
-        PATEERN = r'db\.(\w)+\.(\w)+\(\s*(.*)\s*\)(.*)'
+        PATEERN = r'^db\.(\w)+\.(\w)+\(\s*(.*)\s*\)(.*)$'
         m = re.match(PATTERN, m_statement)
-        self.db = 'database'
-        self.coll = m.group(1)
-        self.op = m.group(2)
-        self.op_args = m.group(3)
-        self.option_ops = m.group(4)
+        if m:
+            self.db = 'database'
+            self.coll = m.group(1)
+            self.op = m.group(2)
+            self.op_args = m.group(3)
+            self.option_ops = m.group(4)
+        else:
+            print 'input again'
 
     def transform(self):
         if self.op == 'find':
@@ -30,12 +33,12 @@ class Transformer(object):
         #criteria_dict = {}
         projection_dict = {}
         option_op_fmt = handle_option_ops(self.option_ops)
-
+        
         FIND_ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
         criteria = re.match(FIND_ARGS_PATTERN, self.args).group(2) # criteria string
         projection = re.match(FIND_ARGS_PATTERN, self.args).group(4) # projection string
 
-        if projection == '':
+        if projection == '' or self.args == '':
             c_fmt = self.handle_criteria(criteria)
             if criteria == '':
                 return 'select * from {0} {1}'.format(self.coll, option_op_fmt)
@@ -49,7 +52,7 @@ class Transformer(object):
                 p_value = p_m.group(2)
                 projection_dict[p_field] = p_value 
 
-            p_fmt = ','.join(key for key in projection_dict if projection[key] == 1]
+            p_fmt = ','.join([key for key in projection_dict if projection[key] == 1])
             if criteria == '':
                 return 'select {0} from {1} {2}'.format(p_fmt, self.coll, option_op_fmt)
 
@@ -177,7 +180,7 @@ class Transformer(object):
         pass
         
 
-    def handle_criteria(self, astring, callback = self.criteria_to_fmt):
+    def handle_criteria(self, astring, callback):
         """criteria string -> datastructures -> where format string"""
         
         PATTERN = r'(\s*(\$\w+)\s*:\s*(\[.*\])\s*|\s*(\w+)\s*:\s*(\{.*\})\s*|\s*(\w+)\s*:\s*(\w+)\s*)'
@@ -247,14 +250,14 @@ class Transformer(object):
                         if k == '$lte':
                             c_d.append('{0}<={1}'.format(k, v))
                         if k == '$gt':
-                            c_d.append(return '{0}>{1}'.format(k, v))
+                            c_d.append('{0}>{1}'.format(k, v))
                         if k == '$gte':
-                            c_d.append(return '{0}>={1}'.format(k, v))
+                            c_d.append('{0}>={1}'.format(k, v))
                         if k == '$eq':
-                            c_d.append(return '{0}={1}'.format(k, v))
+                            c_d.append('{0}={1}'.format(k, v))
                         if k == '$ne':
-                            c_d.append(return '{0}!={1}'.format(k, v))
-                        # may add other operators from here
+                            c_d.append('{0}!={1}'.format(k, v))
+                        # can add other operators from here
 
                 c_d = ' and '.join(c_d)
                 fmt_list.append(c_d)
@@ -265,13 +268,28 @@ class Transformer(object):
         
 
                 
-         
+    def parse_aggregate(self):
+        pass
     
             
             
                 
         
+def main():
+    t_list = []
+    t1 = Transformer("db.test.find({})")
+    t_list.append(t1)
+    #t2 = Transformer("db.test.update({},{$set:{}, $inc:{}})")
+
     
+    #t_list.append(t2)
+    for t in t_list:
+        t.transform()
+
+
+
+if __name__ == '__main__':
+    main()
 
     
 
