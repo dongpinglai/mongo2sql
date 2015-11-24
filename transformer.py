@@ -7,71 +7,45 @@ import re
 
 
 class Transformer(object):
-    def _init__(self, m_statement):
-        PATEERN = r'^db\.(\w)+\.(\w)+\(\s*(.*)\s*\)(.*)$'
+    def __init__(self, m_statement):
+        PATTERN = r'db\.(\w+)\.(\w+)\(\s*(.*)\s*\)(.*)'
         m = re.match(PATTERN, m_statement)
         if m:
+            print 'got the match'
+            print m.groups()
             self.db = 'database'
             self.coll = m.group(1)
             self.op = m.group(2)
             self.op_args = m.group(3)
             self.option_ops = m.group(4)
+            
         else:
-            print 'input again'
+            print 'input statament again'
 
     def transform(self):
+        print 'transforming'
+        sql_fmt = ''
         if self.op == 'find':
-            self.parse_find()
+            print 'it is a find_statement'
+            sql_fmt = self.parse_find()
+            
         if self.op == 'insert':
-            self.parse_insert()
+            print 'it is a insert_statement'
+            sql_fmt = self.parse_insert()
+            
         if self.op == 'update':
-            self.parse_update()
+            print 'it is a update_statement'
+            sql_fmt = self.parse_update()
         if self.op == 'remove':
-            self.parse_remove()
+            print 'it is a remove_statement'
+            sql_fmt = self.parse_remove()
+        print 'transformation completed'
+        print sql_fmt
 
     def parse_find(self):
-        #criteria_dict = {}
-        projection_dict = {}
-        option_op_fmt = handle_option_ops(self.option_ops)
-        
-        FIND_ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
-        criteria = re.match(FIND_ARGS_PATTERN, self.args).group(2) # criteria string
-        projection = re.match(FIND_ARGS_PATTERN, self.args).group(4) # projection string
 
-        if projection == '' or self.args == '':
-            c_fmt = self.handle_criteria(criteria)
-            if criteria == '':
-                return 'select * from {0} {1}'.format(self.coll, option_op_fmt)
-
-            return 'select * from {0} where {1} {2}'.format(self.coll, c_fmt, option_op_format)
-        else:
-            PROJECTION_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
-            projection_m_iter = re.finditer(PROJECTION_PATTERN, projection)
-            for  p_m in projection_m_iter:
-                p_field = p_m.group(1)
-                p_value = p_m.group(2)
-                projection_dict[p_field] = p_value 
-
-            p_fmt = ','.join([key for key in projection_dict if projection[key] == 1])
-            if criteria == '':
-                return 'select {0} from {1} {2}'.format(p_fmt, self.coll, option_op_fmt)
-
-            c_fmt = self.handle_criteria(criteria)
-            return 'select {0} from {1} where {2} {3}'.format(p_fmt, self.coll, c_fmt, option_op_fmt)
-
-                    
-       # else: #select [*|...] from ...[ where ...] [sort|limit|skip]
-        #    option_op_fmt = handle_option_ops(self.option_ops)
-         #   if  projection == '':
-          #      c_fmt = self.handle_criteria(criteria)
-           #     if criteria == '':
-            #        return 'select * from {0}'
-            
-
-
-
-            
-        def handle_option_ops(opsting):
+        # enclosing function to handle the option operations like 'sort', 'limit', 'skip'.
+        def handle_option_ops(opstring):
             """opsting -> option_dict -> option_fmt """
             if opstring == '':
                 option_fmt = ''
@@ -107,17 +81,53 @@ class Transformer(object):
                     option_fmt = option_fmt + 'skip {0}'.format(op_args)
                     
             return option_fmt
-                
+
+
+        find_fmt = ''
+        FIND_ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
+        criteria = re.match(FIND_ARGS_PATTERN, self.op_args).group(2) # criteria string
+        projection = re.match(FIND_ARGS_PATTERN, self.op_args).group(4) # projection string
+        option_op_fmt = handle_option_ops(self.option_ops)
+        if projection == '' or self.op_args == '':
+            c_fmt = self.handle_criteria(criteria)
+            if criteria == '':
+                find_fmt = 'select * from {0} {1}'.format(self.coll, option_op_fmt)
+                return find_fmt
+
+            find_fmt = 'select * from {0} where {1} {2}'.format(self.coll, c_fmt, option_op_format)
+            return find_fmt
+
+
+            
+        else:
+            PROJECTION_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
+            projection_m_iter = re.finditer(PROJECTION_PATTERN, projection)
+            for  p_m in projection_m_iter:
+                p_field = p_m.group(1)
+                p_value = p_m.group(2)
+                projection_dict[p_field] = p_value 
+
+            p_fmt = ','.join([key for key in projection_dict if projection[key] == 1])
+            if criteria == '':
+                find_fmt = 'select {0} from {1} {2}'.format(p_fmt, self.coll, option_op_fmt)
+                return find_fmt
+
+            c_fmt = self.handle_criteria(criteria)
+            find_fmt = 'select {0} from {1} where {2} {3}'.format(p_fmt, self.coll, c_fmt, option_op_fmt)
+            return find_fmt
+
+                    
+       # else: #select [*|...] from ...[ where ...] [sort|limit|skip]
+        #    option_op_fmt = handle_option_ops(self.option_ops)
+         #   if  projection == '':
+          #      c_fmt = self.handle_criteria(criteria)
+           #     if criteria == '':
+            #        return 'select * from {0}'
+            
+            
+                        
 
     def parse_insert(self):
-        INSERT_ARGS_PATTERN = r'(^\[\s*(.*)\s*\]$|^\{\s*(.*)\s*\}$)'
-        insert_args_m = re.match(INSERT_ARGS_PATTERN, self.op_args)
-        insert_args = insert_args_m.group(0)
-        insert_args = handle_insert_args(insert_args)
-        insert_fmt = args_to_fmt(insert_args)
-        insert_fmt = 'insert into {0} values {1}'.format(self.coll, insert_fmt)
-        return insert_fmt
-        
         def handle_insert_args(astring):
             """a string -> list or dict"""
             if astring.startswith('['):
@@ -152,20 +162,17 @@ class Transformer(object):
                     sin_list.append(v)
                 return '({0})'.format(','.join(sin_list))
                    
-           
                 
-
+        INSERT_ARGS_PATTERN = r'(^\[\s*(.*)\s*\]$|^\{\s*(.*)\s*\}$)'
+        insert_args_m = re.match(INSERT_ARGS_PATTERN, self.op_args)
+        insert_args = insert_args_m.group(0)
+        insert_args = handle_insert_args(insert_args)
+        insert_fmt = args_to_fmt(insert_args)
+        insert_fmt = 'insert into {0} values {1}'.format(self.coll, insert_fmt)
+        return insert_fmt
+        
+        
     def parse_update(self):
-        UPDATE_ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
-        update_criteria = re.match(UPDATE_ARGS_PATTERN, self.args).group(2) # criteria string
-        update_operations = re.match(UPDATE_ARGS_PATTERN, self.args).group(4) # operation string
-        option = re.match(UPDATE_ARGS_PATTERN, self.args).group(6) # option string
-        criteria_fmt = self.handle_criteria(update_criteria)
-        operations_fmt = handle_operations(update_operations)
-        option_fmt = handle_option(option)
-        update_fmt = 'update {0} set {1} where'.format(self.coll, operations_fmt, criteria_fmt)
-        return update_fmt
-
         def handle_operations(astring):
             """operations string -> operation format string"""
             OPERATTIONS_PATTERN = r''
@@ -175,6 +182,17 @@ class Transformer(object):
             """option string -> option fromat string"""
             pass
         
+
+
+        UPDATE_ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
+        update_criteria = re.match(UPDATE_ARGS_PATTERN, self.args).group(2) # criteria string
+        update_operations = re.match(UPDATE_ARGS_PATTERN, self.args).group(4) # operation string
+        option = re.match(UPDATE_ARGS_PATTERN, self.args).group(6) # option string
+        criteria_fmt = self.handle_criteria(update_criteria)
+        operations_fmt = handle_operations(update_operations)
+        option_fmt = handle_option(option)
+        update_fmt = 'update {0} set {1} where'.format(self.coll, operations_fmt, criteria_fmt)
+        return update_fmt
 
     def parse_remove(self):
         pass
@@ -193,7 +211,7 @@ class Transformer(object):
             criteria_dict[c_field] = c_value
         return callback(criteria_dict)
         
-    def parse_criteria_value(c_value):
+    def parse_criteria_value(self, c_value):
         """ value string -> datastructures"""
         if c_value.startswith('['): # e.g: {$or: [{}, ..]}
             c_value_list = []
@@ -230,7 +248,7 @@ class Transformer(object):
             if isinstance(value, list):
                 c_l = []
                 for vl in value:
-                    c_l.append(self.check_criteria(v1))
+                    c_l.append(self.criteria_to_fmt(v1))
                 if field == '$or':
                     c_l = ' or '.join(c_1)
                 if field == '$and':
@@ -241,7 +259,7 @@ class Transformer(object):
                 c_d = []
                 for k, v in value.items():
                     if isinstance(v, dict):
-                        c_d.append(self.check_criteria(v))
+                        c_d.append(self.criteria_to_fmt(v))
                     
                     else:
   
@@ -279,10 +297,8 @@ def main():
     t_list = []
     t1 = Transformer("db.test.find({})")
     t_list.append(t1)
-    #t2 = Transformer("db.test.update({},{$set:{}, $inc:{}})")
-
-    
-    #t_list.append(t2)
+#    t2 = Transformer("db.test.update({},{$set:{}, $inc:{}})")
+#    t_list.append(t2)
     for t in t_list:
         t.transform()
 
@@ -290,7 +306,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-    
-
-    
