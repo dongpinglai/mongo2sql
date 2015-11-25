@@ -8,7 +8,7 @@ import re
 
 class Transformer(object):
     def __init__(self, m_statement):
-        PATTERN = r'db\.(\w+)\.(\w+)\(\s*(.*)\s*\)(.*)'
+        PATTERN = r'^db\.(\w+)\.(\w+)\(\s*(.*)\s*\)(.*)$'
         m = re.match(PATTERN, m_statement)
         if m:
             print 'got the match'
@@ -23,6 +23,7 @@ class Transformer(object):
             print 'input statament again'
 
     def transform(self):
+        """ selection logic"""
         print 'transforming'
         sql_fmt = ''
         if self.op == 'find':
@@ -39,10 +40,18 @@ class Transformer(object):
         if self.op == 'remove':
             print 'it is a remove_statement'
             sql_fmt = self.parse_remove()
+        if self.op == 'aggregate':
+            print 'it is a aggregate_statement'
+            sql_fmt = self.parse_aggreaget()
+        if self.op == 'createIndex':
+            print 'it is a createIndex_statement'
+            sql_fmt = self.parse_createIndex()
+            
         print 'transformation completed'
         print sql_fmt
 
     def parse_find(self):
+        """db.coll.find(...)->select ...from ...where...[order by|limit|skp]..."""
 
         # enclosing function to handle the option operations like 'sort', 'limit', 'skip'.
         def handle_option_ops(opstring):
@@ -128,6 +137,8 @@ class Transformer(object):
                         
 
     def parse_insert(self):
+        """db.coll.insert(...)->insert into table_name values ..."""
+
         def handle_insert_args(astring):
             """a string -> list or dict"""
             if astring.startswith('['):
@@ -163,7 +174,7 @@ class Transformer(object):
                 return '({0})'.format(','.join(sin_list))
                    
                 
-        INSERT_ARGS_PATTERN = r'(^\[\s*(.*)\s*\]$|^\{\s*(.*)\s*\}$)'
+        INSERT_ARGS_PATTERN = r'^(\[\s*(.*)\s*\]|^\{\s*(.*)\s*\})$'
         insert_args_m = re.match(INSERT_ARGS_PATTERN, self.op_args)
         insert_args = insert_args_m.group(0)
         insert_args = handle_insert_args(insert_args)
@@ -173,29 +184,82 @@ class Transformer(object):
         
         
     def parse_update(self):
+        """db.coll.update(...)->update table_name ... / alter table table_name ..."""
         def handle_operations(astring):
             """operations string -> operation format string"""
-            OPERATTIONS_PATTERN = r''
+            OPERATTIONS_PATTERN = r'\s*(?P<operation>[$\w]+)\s*:\s*(\{\s*(?P<field>\w+)\s*:\s*(?P<value>\w+)\s*\})\s*'
+            operations_m_iter = re.finditer(OPERATIONS_PATTERN, astring)
+            operation_fmt_list = []
+            operation_fmt = ''
+            for op_m in operations_m_iter:
+                op = op_m.group(operation)
+                field = op_m.group(field)
+                value = op_m.group(value)
+                if op == '$set':
+                    operation_fmt = 'set {0}={1}'.format(field, value)
+                if op == '$inc':
+                    operation_fmt = 'set {0}={0}+{1}'.format(field, value)
+                if op == '$unset':
+                    operation_fmt = 'alter table {0} drop {1}'.format(self.coll, field)
+                if op == '$push':
+                    operation_fmt = 'alter table {0} add {1}, set {2}={3}'.format(self.coll, field,field, value)
+                # other operations
+                operation_fmt_list.append(operation_fmt)
+            if len(operation_fmt_list) == 1:
+                return operation_fmt_list[0]
+            return ','.join(operation_fmt_list)
+                            
             
-            pass
+            
         def handle_option(astring):
             """option string -> option fromat string"""
-            pass
+            OPTION_PATTERN = r'\s*\{\s*(?P<name>\w+)\s*:\s*(?P<value>\w+)\s*\}\s*'
+            option_m = re.match(OPTION_PATTERN, astring)
+            option_name = option_m.group(name)
+            option_value = option_m.group(value)
+            if option_value == 'true':
+                return None
+                        
+
+        UPDATE_ARGS_PATTERN = r'^(?P<criteria>.*),(?P<operations>.*),?\s*(?P<option>.*)?$'
         
-
-
-        UPDATE_ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
-        update_criteria = re.match(UPDATE_ARGS_PATTERN, self.args).group(2) # criteria string
-        update_operations = re.match(UPDATE_ARGS_PATTERN, self.args).group(4) # operation string
-        option = re.match(UPDATE_ARGS_PATTERN, self.args).group(6) # option string
+        update_criteria = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(criteria) # criteria string
+        update_operations = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(operations) # operation string
+        update_option = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(option) # option string
         criteria_fmt = self.handle_criteria(update_criteria)
         operations_fmt = handle_operations(update_operations)
-        option_fmt = handle_option(option)
+        option_fmt = handle_option(update_option)
         update_fmt = 'update {0} set {1} where'.format(self.coll, operations_fmt, criteria_fmt)
         return update_fmt
 
     def parse_remove(self):
-        pass
+        """db.coll.remove(...)->delete from ..."""
+
+        def handle_option(asrting):
+            """option string -> option string format"""
+            OPTION_PATTERN = r'\s*(?P<optional>\w+)\s*:\s*(?P<value>.*)\s*'
+            option_m_iter = re.finditer(OPTION_PATTERN, astring)
+            option_fmt = ''
+            for op_m in option_m_iter:
+                op_optional = op_m.group(optional)
+                op_value = op_m.group(value)
+                if op_optional == 'justOne':
+                    pass
+                if op_optional == 'writeConcern':
+                    pass
+                if op_optional == 'isolated':
+                    pass
+                
+
+        REMOVE_ARGS_PATTERN = r'^(?P<criteria>.*),?(?P<option>.*)?$'
+        remove_criteria = re.match(REMOVE_ARGS_PATTERN, self.op_args).group(criteria)
+        remove_option = re.match(REMOVE_ARGS_PATTERN, self.op_args).group(option)
+        remove_fmt = ''
+        criteria_fmt = self.handle_criteria(remove_criteria)
+        option_fmt = handle_option(remove_option)
+        remove_fmt = 'delete from {0} where {1}'.format(self.coll, criteria_fmt)
+        return remove_fmt
+        
         
 
     def handle_criteria(self, astring, callback):
@@ -287,6 +351,7 @@ class Transformer(object):
 
                 
     def parse_aggregate(self):
+        AGGREGATE_ARGS_PATTERN = r''
         pass
     
             
