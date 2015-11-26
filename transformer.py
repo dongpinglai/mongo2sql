@@ -8,16 +8,16 @@ import re
 
 class Transformer(object):
     def __init__(self, m_statement):
-        PATTERN = r'^db\.(\w+)\.(\w+)\(\s*(.*)\s*\)(.*)$'
+        PATTERN = r'^db\.(?P<coll>\w+)\.(?P<op>\w+)\(\s*(?P<op_args>.*)\s*\).?(?P<option_ops>.*)?$'
         m = re.match(PATTERN, m_statement)
         if m:
             print 'got the match'
             print m.groups()
             self.db = 'database'
-            self.coll = m.group(1)
-            self.op = m.group(2)
-            self.op_args = m.group(3)
-            self.option_ops = m.group(4)
+            self.coll = m.group(coll) # collection name string
+            self.op = m.group(op) # the first function name string
+            self.op_args = m.group(op_args) # the first function args string
+            self.option_ops = m.group(option_ops) # other function string
             
         else:
             print 'input statament again'
@@ -25,7 +25,7 @@ class Transformer(object):
     def transform(self):
         """ selection logic"""
         print 'transforming'
-        sql_fmt = ''
+        sql_fmt = '' # sql statement var
         if self.op == 'find':
             print 'it is a find_statement'
             sql_fmt = self.parse_find()
@@ -50,10 +50,93 @@ class Transformer(object):
         print 'transformation completed'
         print sql_fmt
 
+
+
+    def handle_string(self, astring):
+        """a mongo args string -> a dict"""
+        if astring == '':
+            return {}
+        STRING_PATTERN = r'(\s*(?P<key>[$\w]+)\s*:\s*(?P<value>.*)\s*,?)*' # key: value, e.g: value:value or value:exp ...
+        string_dict = {}
+        string_m_iter = re.finditer(STRING_PATTERN, astring)
+        for str_m in string_m_iter:
+            key  = str_m.group(key)
+            value =  str_m.group(value)
+            if value.startswtih('['):
+                value_list = []
+                VALUE_LIST_PATTERN = r'\s*\{.*\}\s*' # {..},{...},...
+                value_m_iter = re.finditer(VALUE_LIST_PATTERN, value)
+                for v_m in value_m_iter:
+                    value_list.append(handle_string(v_m.group(0)))
+                value = value_list
+            elif value.startswith('{'):
+                value_dict = handle_string(value)
+                value = value_dict
+            else:
+                value = value
+            string_dict[key] = value
+        return string_dict
+
+    
+    def handle_dict(self, adict):
+        """a dict -> a sql format string """
+        fmt = ''
+        if criteria_dict == {}:
+                return ''
+        for field, value in crite_dict.items():
+            
+            if isinstance(value, list):
+                l_list = []
+                pass
+                for v in value:
+                    v_list.append(handle_dict(v))
+            elif isinstance(value, dict):
+                d_list = []
+                handle_dict(value)
+            elif field == '$lt':
+                '{0}<{1}'.format(field, value)
+            elif field == '$lte':
+                '{0}<='.format(field, value)
+            elif field == '$gt':
+                '{0}>{1}'.format(field, value)
+            elif field == '$gte':
+                '{0}>={1}'.format(field, value)
+            elif field == '$ne':
+                '{0}!={1}'.format(field, value)
+            elif field == '$eq' or not field.startswith('$'):
+                '{0}={1}'.format(field, value)
+            # add other operators' formats behind here
+                
+                
+                
+        
+
+        
     def parse_find(self):
         """db.coll.find(...)->select ...from ...where...[order by|limit|skp]..."""
 
-        # enclosing function to handle the option operations like 'sort', 'limit', 'skip'.
+        def handle_criteria(criteria_string):
+            
+            criteria_dict = self.handle_string(criteria_string)
+            crite_fmt = self.handle_dict(criteria_dict)
+            return crite_fmt
+
+        
+        def handle_projection(projetion_string):
+            proj_fmt = ''
+            if projection_string == '':
+                return proj_fmt
+            PROJECTION_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
+            projection_m_iter = re.finditer(PROJECTION_PATTERN, projection_string)
+            for  p_m in projection_m_iter:
+                p_field = p_m.group(1)
+                p_value = p_m.group(2)
+                projection_dict[p_field] = p_value 
+
+            proj_fmt = ','.join([key for key in projection_dict if projection[key] == '1'])
+            return proj_fmt
+
+
         def handle_option_ops(opstring):
             """opsting -> option_dict -> option_fmt """
             if opstring == '':
@@ -76,6 +159,7 @@ class Transformer(object):
                     for op_args_m in op_args_m_iter:
                         sort_op_name = op_args_m.group(1)
                         sort_op_value = op_args_m.group(2)
+
                         if sort_op_value == '1':
                            option_fmt.append('{0}'.format(sort_op_name))
                         if sort_op_value == '0':
@@ -93,47 +177,30 @@ class Transformer(object):
 
 
         find_fmt = ''
-        FIND_ARGS_PATTERN = r'^(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})?\s*,?\s*(\{\s*(.*)\s*\})\s*$'
-        criteria = re.match(FIND_ARGS_PATTERN, self.op_args).group(2) # criteria string
-        projection = re.match(FIND_ARGS_PATTERN, self.op_args).group(4) # projection string
-        option_op_fmt = handle_option_ops(self.option_ops)
-        if projection == '' or self.op_args == '':
-            c_fmt = self.handle_criteria(criteria)
-            if criteria == '':
-                find_fmt = 'select * from {0} {1}'.format(self.coll, option_op_fmt)
+        FIND_ARGS_PATTERN = r'^(\{\s*(?P<criteria>.*)\s*\})?\s*,?\s*(\{\s*(?P<projection>.*)\s*\})?\s*,?\s*(\{\s*(?P<option>.*)\s*\})\s*$'
+        criteria = re.(FIND_ARGS_PATTERN, self.op_args).group(criteria) # criteria string
+        projection = re.match(FIND_ARGS_PATTERN, self.op_args).group(projection) # projection string
+        option_ops = self.option_ops
+        
+        criteria_fmt = handle_criteria(criteria)
+        projection_fmt = handle_projection(projection)
+        option_ops_fmt = handle_option_ops(option_ops)
+        
+        if projection_fmt == '':
+            if criteria_fmt == '':
+                find_fmt = 'select * from {0} {1}'.format(self.coll, option_ops_fmt)
                 return find_fmt
-
-            find_fmt = 'select * from {0} where {1} {2}'.format(self.coll, c_fmt, option_op_format)
+p
+            find_fmt = 'select * from {0} where {1} {2}'.format(self.coll, criteria_fmt, option_ops_format)
             return find_fmt
-
-
             
         else:
-            PROJECTION_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
-            projection_m_iter = re.finditer(PROJECTION_PATTERN, projection)
-            for  p_m in projection_m_iter:
-                p_field = p_m.group(1)
-                p_value = p_m.group(2)
-                projection_dict[p_field] = p_value 
-
-            p_fmt = ','.join([key for key in projection_dict if projection[key] == 1])
             if criteria == '':
-                find_fmt = 'select {0} from {1} {2}'.format(p_fmt, self.coll, option_op_fmt)
+                find_fmt = 'select {0} from {1} {2}'.format(projection_fmt, self.coll, option_ops_fmt)
                 return find_fmt
 
-            c_fmt = self.handle_criteria(criteria)
-            find_fmt = 'select {0} from {1} where {2} {3}'.format(p_fmt, self.coll, c_fmt, option_op_fmt)
+            find_fmt = 'select {0} from {1} where {2} {3}'.format(projection_fmt, self.coll, criteria_fmt, option_ops_fmt)
             return find_fmt
-
-                    
-       # else: #select [*|...] from ...[ where ...] [sort|limit|skip]
-        #    option_op_fmt = handle_option_ops(self.option_ops)
-         #   if  projection == '':
-          #      c_fmt = self.handle_criteria(criteria)
-           #     if criteria == '':
-            #        return 'select * from {0}'
-            
-            
                         
 
     def parse_insert(self):
@@ -226,7 +293,7 @@ class Transformer(object):
         update_criteria = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(criteria) # criteria string
         update_operations = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(operations) # operation string
         update_option = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(option) # option string
-        criteria_fmt = self.handle_criteria(update_criteria)
+        criteria_fmt = self.handle_string(update_criteria)
         operations_fmt = handle_operations(update_operations)
         option_fmt = handle_option(update_option)
         update_fmt = 'update {0} set {1} where'.format(self.coll, operations_fmt, criteria_fmt)
@@ -255,56 +322,16 @@ class Transformer(object):
         remove_criteria = re.match(REMOVE_ARGS_PATTERN, self.op_args).group(criteria)
         remove_option = re.match(REMOVE_ARGS_PATTERN, self.op_args).group(option)
         remove_fmt = ''
-        criteria_fmt = self.handle_criteria(remove_criteria)
+        criteria_fmt = self.handle_string(remove_criteria)
         option_fmt = handle_option(remove_option)
         remove_fmt = 'delete from {0} where {1}'.format(self.coll, criteria_fmt)
         return remove_fmt
         
         
 
-    def handle_criteria(self, astring, callback):
-        """criteria string -> datastructures -> where format string"""
-        
-        PATTERN = r'(\s*(\$\w+)\s*:\s*(\[.*\])\s*|\s*(\w+)\s*:\s*(\{.*\})\s*|\s*(\w+)\s*:\s*(\w+)\s*)'
-        criteria_dict = {}
-        criteria_m = re.finditer(PATTERN, astring)
-        for c_m in criteria_m:
-            c_field  = c_m.group(1)
-            c_value =  c_m.group(2)
-            c_value = self.parse_criteria_value(c_value)
-            criteria_dict[c_field] = c_value
-        return callback(criteria_dict)
-        
-    def parse_criteria_value(self, c_value):
-        """ value string -> datastructures"""
-        if c_value.startswith('['): # e.g: {$or: [{}, ..]}
-            c_value_list = []
-            C_VALUE_LIST_PATTERN = r'\s*((.*)\s*,?)\s*'
-            c_value_list_m = re.finditer(C_VALUE_LIST_PATTERN, c_value)
-            for c_v_l_m in c_value_list_m:
-                c_v_l = c_v_l_m.group(2)
-                c_v_l = parse_criteria_value(c_v_l)
-                c_value_list.append(c_v_l)
- 
-            return c_value_list
-
-        elif c_value.startswith('{'): # e.g: {XXX:{$lt:XX}}
-            c_value_dict = {}
-            C_VALUE_DICT__PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
-            c_value_dict_m = re.finditer(C_VALUE_DICT_PATTERN, c_value)
-            for c_v_d_m in c_value_dict_m:
-                c_v_field = c_v_d_m.group(1)
-                c_v_value = c_v_d_m.group(2)
-                c_v_value = parse_criteria_value(c_v_value)
-                c_value_dict[c_v_field] = c_v_value
-                    
-            return c_value_dict
-
-        else: # e.g: {XXX: XX}
-            return c_value
-                    
-
-        
+    
+            
+          
     def criteria_to_fmt(self, adict):
         """a dict -> format string"""
         for field, value in adict.items:
@@ -324,7 +351,6 @@ class Transformer(object):
                 for k, v in value.items():
                     if isinstance(v, dict):
                         c_d.append(self.criteria_to_fmt(v))
-                    
                     else:
   
                         if k == '$lt':
@@ -351,7 +377,27 @@ class Transformer(object):
 
                 
     def parse_aggregate(self):
+        """mongo aggregate statement -> sql advanced select statement"""
         AGGREGATE_ARGS_PATTERN = r''
+        aggregate_fmt = ''
+        aggregate_m_iter = re.finditer(AGGREGATE_ARGS_PATTERN, self.op_args)
+        for a_m in aggregate_m_iter:
+            stage_name = a_m.group(stagename)
+            stage_args = a_m.group(stageargs)
+            if stage_name == '$match':
+                aggregate_fmt = handle_match
+                pass
+            if statge_name == '$group':
+                pass
+            if stage_name == '$projection':
+                pass
+            if stage_name == '$sort':
+                pass
+            if stage_name == '$limit':
+                pass
+            if stage_name == '$sum':
+                pass
+        
         pass
     
             
@@ -362,8 +408,8 @@ def main():
     t_list = []
     t1 = Transformer("db.test.find({})")
     t_list.append(t1)
-#    t2 = Transformer("db.test.update({},{$set:{}, $inc:{}})")
-#    t_list.append(t2)
+    t2 = Transformer("db.test.update({},{$set:{}, $inc:{}})")
+    t_list.append(t2)
     for t in t_list:
         t.transform()
 
