@@ -53,10 +53,12 @@ class Transformer(object):
 
 
     def handle_string(self, astring):
-        """a mongo args string -> a dict"""
+        """a mongo args string -> a args dict. e.g: '{XXX: XXXX, ....}'->
+        {XXX: XXXX, ....}
+        """
         if astring == '':
             return {}
-        STRING_PATTERN = r'(\s*(?P<key>[$\w]+)\s*:\s*(?P<value>.*)\s*,?)*' # key: value, e.g: value:value or value:exp ...
+        STRING_PATTERN = r'(\s*(?P<key>[$\w]+)\s*:\s*(?P<value>.*)\s*,?)' # key: value, e.g: value:value or value:exp ...
         string_dict = {}
         string_m_iter = re.finditer(STRING_PATTERN, astring)
         for str_m in string_m_iter:
@@ -64,7 +66,7 @@ class Transformer(object):
             value =  str_m.group(value)
             if value.startswtih('['):
                 value_list = []
-                VALUE_LIST_PATTERN = r'\s*\{.*\}\s*' # {..},{...},...
+                VALUE_LIST_PATTERN = r'\s*\{.*\}\s*,?' # {..},{...},...
                 value_m_iter = re.finditer(VALUE_LIST_PATTERN, value)
                 for v_m in value_m_iter:
                     value_list.append(handle_string(v_m.group(0)))
@@ -79,44 +81,54 @@ class Transformer(object):
 
     
     def handle_dict(self, adict):
-        """a dict -> a sql format string """
-        fmt = ''
-        if criteria_dict == {}:
+        """a args dict -> a sql format string """
+        fmt = []
+        if adict == {}:
                 return ''
         for field, value in crite_dict.items():
-            
             if isinstance(value, list):
-                l_list = []
-                pass
+                l_fmt = []
                 for v in value:
-                    v_list.append(handle_dict(v))
+                    l_fmt.append(handle_dict(v))
+                if field == '$or':
+                    l_fmt = ' or '.join(l_fmt)
+                elif field == '$and':
+                    l_fmt = ' and '.join(l_fmt)
+                fmt.append(l_fmt)
+        
             elif isinstance(value, dict):
-                d_list = []
-                handle_dict(value)
+                d_fmt = []
+                d_fmt.append(handle_dict(value))
+                d_fmt = ' and '.join(d_fmt)
+                fmt.append(d_fmt)
+        
             elif field == '$lt':
-                '{0}<{1}'.format(field, value)
+                fmt.append('{0}<{1}'.format(field, value))
             elif field == '$lte':
-                '{0}<='.format(field, value)
+                fmt.append('{0}<='.format(field, value))
             elif field == '$gt':
-                '{0}>{1}'.format(field, value)
+                fmt.append('{0}>{1}'.format(field, value))
             elif field == '$gte':
-                '{0}>={1}'.format(field, value)
+                fmt.append('{0}>={1}'.format(field, value))
             elif field == '$ne':
-                '{0}!={1}'.format(field, value)
+                fmt.append('{0}!={1}'.format(field, value))
             elif field == '$eq' or not field.startswith('$'):
-                '{0}={1}'.format(field, value)
+                fmt.append('{0}={1}'.format(field, value))
             # add other operators' formats behind here
-                
-                
-                
+        if len(adict) == 1:
+            fmt = fmt[0]
+            return fmt
+        fmt = ' and '.join(fmt)
+        return fmt
         
 
         
     def parse_find(self):
         """db.coll.find(...)->select ...from ...where...[order by|limit|skp]..."""
 
-        def handle_criteria(criteria_string):
-            
+        #inner functions
+        def handle_find_criteria(criteria_string):
+            crite_fmt = []
             criteria_dict = self.handle_string(criteria_string)
             crite_fmt = self.handle_dict(criteria_dict)
             return crite_fmt
@@ -174,7 +186,7 @@ class Transformer(object):
                     option_fmt = option_fmt + 'skip {0}'.format(op_args)
                     
             return option_fmt
-
+        #inner functions ending
 
         find_fmt = ''
         FIND_ARGS_PATTERN = r'^(\{\s*(?P<criteria>.*)\s*\})?\s*,?\s*(\{\s*(?P<projection>.*)\s*\})?\s*,?\s*(\{\s*(?P<option>.*)\s*\})\s*$'
@@ -182,7 +194,7 @@ class Transformer(object):
         projection = re.match(FIND_ARGS_PATTERN, self.op_args).group(projection) # projection string
         option_ops = self.option_ops
         
-        criteria_fmt = handle_criteria(criteria)
+        criteria_fmt = handle_find_criteria(criteria)
         projection_fmt = handle_projection(projection)
         option_ops_fmt = handle_option_ops(option_ops)
         
@@ -205,7 +217,8 @@ p
 
     def parse_insert(self):
         """db.coll.insert(...)->insert into table_name values ..."""
-
+        
+        # inner functions
         def handle_insert_args(astring):
             """a string -> list or dict"""
             if astring.startswith('['):
@@ -239,7 +252,7 @@ p
                 for k, v in insert_args.items:
                     sin_list.append(v)
                 return '({0})'.format(','.join(sin_list))
-                   
+        #inner functions ending
                 
         INSERT_ARGS_PATTERN = r'^(\[\s*(.*)\s*\]|^\{\s*(.*)\s*\})$'
         insert_args_m = re.match(INSERT_ARGS_PATTERN, self.op_args)
@@ -252,6 +265,8 @@ p
         
     def parse_update(self):
         """db.coll.update(...)->update table_name ... / alter table table_name ..."""
+
+        # inner functions
         def handle_operations(astring):
             """operations string -> operation format string"""
             OPERATTIONS_PATTERN = r'\s*(?P<operation>[$\w]+)\s*:\s*(\{\s*(?P<field>\w+)\s*:\s*(?P<value>\w+)\s*\})\s*'
@@ -286,24 +301,36 @@ p
             option_value = option_m.group(value)
             if option_value == 'true':
                 return None
-                        
+        def handle_update_criteria(astring):
+            criteria_dict = self.handle_string(astring)
+            crite_fmt = self.handle_dict(criteria_dict)
+            return crite_fmt
+        
+        # inner functions definition ending    
 
         UPDATE_ARGS_PATTERN = r'^(?P<criteria>.*),(?P<operations>.*),?\s*(?P<option>.*)?$'
         
         update_criteria = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(criteria) # criteria string
         update_operations = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(operations) # operation string
         update_option = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(option) # option string
-        criteria_fmt = self.handle_string(update_criteria)
+        criteria_fmt = handle_update_criteria(update_criteria)
         operations_fmt = handle_operations(update_operations)
         option_fmt = handle_option(update_option)
-        update_fmt = 'update {0} set {1} where'.format(self.coll, operations_fmt, criteria_fmt)
+        if criteria_fmt == '':
+            update_fmt = 'update {0} {1}'.format(self.coll, operation_fmt)
+            return update_fmt
+        update_fmt = 'update {0} {1} where {2}'.format(self.coll, operations_fmt, criteria_fmt)
         return update_fmt
+
+
 
     def parse_remove(self):
         """db.coll.remove(...)->delete from ..."""
-
+        
+        # inner functions
         def handle_option(asrting):
-            """option string -> option string format"""
+            """option string -> option string format.
+            As a  placeholder for  extending"""
             OPTION_PATTERN = r'\s*(?P<optional>\w+)\s*:\s*(?P<value>.*)\s*'
             option_m_iter = re.finditer(OPTION_PATTERN, astring)
             option_fmt = ''
@@ -316,79 +343,63 @@ p
                     pass
                 if op_optional == 'isolated':
                     pass
-                
-
+    
+        def handle_remove_criteria(astring):
+            crite_fmt = []
+            criteria_dict = self.handle_string(astring)
+            crite_fmt = self.handle_dict(criteria_dict)
+            return crite_fmt
+        # inner functions' definition ended                         
+        
         REMOVE_ARGS_PATTERN = r'^(?P<criteria>.*),?(?P<option>.*)?$'
         remove_criteria = re.match(REMOVE_ARGS_PATTERN, self.op_args).group(criteria)
         remove_option = re.match(REMOVE_ARGS_PATTERN, self.op_args).group(option)
-        remove_fmt = ''
-        criteria_fmt = self.handle_string(remove_criteria)
+        
+        criteria_fmt = handle_remove_criteria(remove_criteria)
         option_fmt = handle_option(remove_option)
+        if criteria_fmt == '':
+            remove_fmt = 'delete from {0}'.format(self.coll)
+            return remove_fmt
         remove_fmt = 'delete from {0} where {1}'.format(self.coll, criteria_fmt)
         return remove_fmt
         
-        
-
-    
-            
           
-    def criteria_to_fmt(self, adict):
-        """a dict -> format string"""
-        for field, value in adict.items:
-            fmt_list = []
-            if isinstance(value, list):
-                c_l = []
-                for vl in value:
-                    c_l.append(self.criteria_to_fmt(v1))
-                if field == '$or':
-                    c_l = ' or '.join(c_1)
-                if field == '$and':
-                    c_1 = ' and '.join(c_1)
-                    
-                fmt_list.append(c_l)
-            if isinstance(value, dict):
-                c_d = []
-                for k, v in value.items():
-                    if isinstance(v, dict):
-                        c_d.append(self.criteria_to_fmt(v))
-                    else:
-  
-                        if k == '$lt':
-                            c_d.append('{0}<{1}'.format(k, v))
-                        if k == '$lte':
-                            c_d.append('{0}<={1}'.format(k, v))
-                        if k == '$gt':
-                            c_d.append('{0}>{1}'.format(k, v))
-                        if k == '$gte':
-                            c_d.append('{0}>={1}'.format(k, v))
-                        if k == '$eq':
-                            c_d.append('{0}={1}'.format(k, v))
-                        if k == '$ne':
-                            c_d.append('{0}!={1}'.format(k, v))
-                        # can add other operators from here
-
-                c_d = ' and '.join(c_d)
-                fmt_list.append(c_d)
-            else:
-                fmt_list.append('{0}={1}'.format(field, value))
-        return ' and '.join(fmt_list)
-           
-        
-
                 
     def parse_aggregate(self):
         """mongo aggregate statement -> sql advanced select statement"""
-        AGGREGATE_ARGS_PATTERN = r''
-        aggregate_fmt = ''
+
+        # inner functions
+        def handle_match(astring):
+            match_dict = self.handle_string(astring)
+            match_fmt_string = self.handle_dict(match_dict)
+            return match_fmt_string
+
+
+        AGGREGATE_ARGS_PATTERN = r'\s*(?P<stagename>[$\w]+)\s*:\s*(?P<stageargs>.*)\s*,?'
+
+        projection_fmt = ''
+        options_fmt = ''
         aggregate_m_iter = re.finditer(AGGREGATE_ARGS_PATTERN, self.op_args)
+        stage__dict = {}
+        stage_name_list = []
         for a_m in aggregate_m_iter:
             stage_name = a_m.group(stagename)
             stage_args = a_m.group(stageargs)
-            if stage_name == '$match':
-                aggregate_fmt = handle_match
+            stage__dict[stage_name] = stage_args
+            stage_name_list.append(stage_name)
+
+        for stage_name, stage_args in stage_dict.items():
+            if stage_name == '$match' and stage_name_list.index('$match') < stage_name_list.index('$group'):
+                match_fmt = ' where ' + handle_match(stage_args)
+                options_fmt = options_fmt + match_fmt
+
+            if stage_name == '$group':
                 pass
-            if statge_name == '$group':
-                pass
+                
+            if stage_name == '$match' and stage_name_list.index('$match') > stage_name_list.index('$group'):
+                match_fmt = ' having ' + handle_match(stage_args)
+                options_fmt = options_fmt + match_fmt
+                
             if stage_name == '$projection':
                 pass
             if stage_name == '$sort':
@@ -397,10 +408,11 @@ p
                 pass
             if stage_name == '$sum':
                 pass
-        
-        pass
+        aggregate_fmt = 'select {0} from {1}'.format(projection_fmt,self.coll, options_fmt)        
+        return aggregate_fmt
     
-            
+    def parse_createIndex(self):
+        pass
             
                 
         
