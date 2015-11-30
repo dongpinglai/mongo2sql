@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 #created by: laidongping2006@sina.com 
 
@@ -14,10 +14,10 @@ class Transformer(object):
             print 'got the match'
             print m.groups()
             self.db = 'database'
-            self.coll = m.group(coll) # collection name string
-            self.op = m.group(op) # the first function name string
-            self.op_args = m.group(op_args) # the first function args string
-            self.option_ops = m.group(option_ops) # other function string
+            self.coll = m.group('coll') # collection name string
+            self.op = m.group('op') # the first function name string
+            self.op_args = m.group('op_args') # the first function args string
+            self.option_ops = m.group('option_ops') # other function string
             
         else:
             print 'input statament again'
@@ -62,8 +62,8 @@ class Transformer(object):
         string_dict = {}
         string_m_iter = re.finditer(STRING_PATTERN, astring)
         for str_m in string_m_iter:
-            key  = str_m.group(key)
-            value =  str_m.group(value)
+            key  = str_m.group('key')
+            value =  str_m.group('value')
             if value.startswtih('['):
                 value_list = []
                 VALUE_LIST_PATTERN = r'\s*\{.*\}\s*,?' # {..},{...},...
@@ -190,8 +190,8 @@ class Transformer(object):
 
         find_fmt = ''
         FIND_ARGS_PATTERN = r'^(\{\s*(?P<criteria>.*)\s*\})?\s*,?\s*(\{\s*(?P<projection>.*)\s*\})?\s*,?\s*(\{\s*(?P<option>.*)\s*\})\s*$'
-        criteria = re.(FIND_ARGS_PATTERN, self.op_args).group(criteria) # criteria string
-        projection = re.match(FIND_ARGS_PATTERN, self.op_args).group(projection) # projection string
+        criteria = re.match(FIND_ARGS_PATTERN, self.op_args).group('criteria') # criteria string
+        projection = re.match(FIND_ARGS_PATTERN, self.op_args).group('projection') # projection string
         option_ops = self.option_ops
         
         criteria_fmt = handle_find_criteria(criteria)
@@ -202,7 +202,6 @@ class Transformer(object):
             if criteria_fmt == '':
                 find_fmt = 'select * from {0} {1}'.format(self.coll, option_ops_fmt)
                 return find_fmt
-p
             find_fmt = 'select * from {0} where {1} {2}'.format(self.coll, criteria_fmt, option_ops_format)
             return find_fmt
             
@@ -310,9 +309,9 @@ p
 
         UPDATE_ARGS_PATTERN = r'^(?P<criteria>.*),(?P<operations>.*),?\s*(?P<option>.*)?$'
         
-        update_criteria = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(criteria) # criteria string
-        update_operations = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(operations) # operation string
-        update_option = re.match(UPDATE_ARGS_PATTERN, self.op_args).group(option) # option string
+        update_criteria = re.match(UPDATE_ARGS_PATTERN, self.op_args).group('criteria') # criteria string
+        update_operations = re.match(UPDATE_ARGS_PATTERN, self.op_args).group('operations') # operation string
+        update_option = re.match(UPDATE_ARGS_PATTERN, self.op_args).group('option') # option string
         criteria_fmt = handle_update_criteria(update_criteria)
         operations_fmt = handle_operations(update_operations)
         option_fmt = handle_option(update_option)
@@ -335,8 +334,8 @@ p
             option_m_iter = re.finditer(OPTION_PATTERN, astring)
             option_fmt = ''
             for op_m in option_m_iter:
-                op_optional = op_m.group(optional)
-                op_value = op_m.group(value)
+                op_optional = op_m.group('optional')
+                op_value = op_m.group('value')
                 if op_optional == 'justOne':
                     pass
                 if op_optional == 'writeConcern':
@@ -352,8 +351,8 @@ p
         # inner functions' definition ended                         
         
         REMOVE_ARGS_PATTERN = r'^(?P<criteria>.*),?(?P<option>.*)?$'
-        remove_criteria = re.match(REMOVE_ARGS_PATTERN, self.op_args).group(criteria)
-        remove_option = re.match(REMOVE_ARGS_PATTERN, self.op_args).group(option)
+        remove_criteria = re.match(REMOVE_ARGS_PATTERN, self.op_args).group('criteria')
+        remove_option = re.match(REMOVE_ARGS_PATTERN, self.op_args).group('option')
         
         criteria_fmt = handle_remove_criteria(remove_criteria)
         option_fmt = handle_option(remove_option)
@@ -383,8 +382,8 @@ p
         stage__dict = {}
         stage_name_list = []
         for a_m in aggregate_m_iter:
-            stage_name = a_m.group(stagename)
-            stage_args = a_m.group(stageargs)
+            stage_name = a_m.group('stagename')
+            stage_args = a_m.group('stageargs')
             stage__dict[stage_name] = stage_args
             stage_name_list.append(stage_name)
 
