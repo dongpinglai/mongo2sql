@@ -190,8 +190,9 @@ class Transformer(object):
 
         find_fmt = ''
         FIND_ARGS_PATTERN = r'^(\{\s*(?P<criteria>.*)\s*\})?\s*,?\s*(\{\s*(?P<projection>.*)\s*\})?\s*,?\s*(\{\s*(?P<option>.*)\s*\})\s*$'
-        criteria = re.match(FIND_ARGS_PATTERN, self.op_args).group('criteria') # criteria string
-        projection = re.match(FIND_ARGS_PATTERN, self.op_args).group('projection') # projection string
+        find_args_m = re.match(FIND_ARGS_PATTERN, self.op_args)
+        criteria = find_args_m.group('criteria') # criteria string
+        projection = find_args_m.group('projection') # projection string
         option_ops = self.option_ops
         
         criteria_fmt = handle_find_criteria(criteria)
