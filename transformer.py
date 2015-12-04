@@ -420,7 +420,8 @@ def main():
     t_list = []
     t1 = Transformer("db.test.find({})")
     t_list.append(t1)
-    t2 = Transformer("db.test.update({},{$set:{}, $inc:{}})")
+    t2 = Transformer("db.test.update({'a': 1},{$set:{}, $inc:{}})")
+    
     t_list.append(t2)
     for t in t_list:
         t.transform()
