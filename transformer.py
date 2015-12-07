@@ -4,24 +4,39 @@
 
 
 import re
+import sys
+from threading import Thread
 
 
 class Transformer(object):
     def __init__(self, m_statement):
-        PATTERN = r'^db\.(?P<coll>\w+)\.(?P<op>\w+)\(\s*(?P<op_args>.*)\s*\).?(?P<option_ops>.*)?$'
-        m = re.match(PATTERN, m_statement)
-        if m:
-            print 'got the match'
+        print m_statement        
+        try:
+            PATTERN = r'^db\.(?P<coll>[^.]+)\.(?P<op>\w+)\((?P<op_args>[^)]*)\)\.?(?P<option_ops>.*)$'
+            m = re.match(PATTERN, m_statement)
             print m.groups()
+        except:
+            #exc_type, exc_value, exc_traceback = sys.exc_info()
+            #print exc_type, exc_value, exc_traceback
+            print 'check your statement, please input statement again...'
+            sys.exit(0)
+
+        else:
+            
+            
             self.db = 'database'
             self.coll = m.group('coll') # collection name string
             self.op = m.group('op') # the first function name string
             self.op_args = m.group('op_args') # the first function args string
             self.option_ops = m.group('option_ops') # other function string
-            
-        else:
-            print 'input statament again'
-
+            print 'self.db: ' + self.db
+            print 'self.coll: ' + self.coll
+            print 'self.op: ' + self.op
+            print 'self.op_args: ' + self.op_args
+            print 'self.option_ops: ' + self.option_ops
+            print '-' * 66
+            self.transform()
+       
     def transform(self):
         """ selection logic"""
         print 'transforming'
@@ -64,15 +79,15 @@ class Transformer(object):
         for str_m in string_m_iter:
             key  = str_m.group('key')
             value =  str_m.group('value')
-            if value.startswtih('['):
+            if value.startswith('['):
                 value_list = []
                 VALUE_LIST_PATTERN = r'\s*\{.*\}\s*,?' # {..},{...},...
                 value_m_iter = re.finditer(VALUE_LIST_PATTERN, value)
                 for v_m in value_m_iter:
-                    value_list.append(handle_string(v_m.group(0)))
+                    value_list.append(self.handle_string(v_m.group(0)))
                 value = value_list
             elif value.startswith('{'):
-                value_dict = handle_string(value)
+                value_dict = self.handle_string(value)
                 value = value_dict
             else:
                 value = value
@@ -85,11 +100,11 @@ class Transformer(object):
         fmt = []
         if adict == {}:
                 return ''
-        for field, value in crite_dict.items():
+        for field, value in adict.items():
             if isinstance(value, list):
                 l_fmt = []
                 for v in value:
-                    l_fmt.append(handle_dict(v))
+                    l_fmt.append(self.handle_dict(v))
                 if field == '$or':
                     l_fmt = ' or '.join(l_fmt)
                 elif field == '$and':
@@ -98,14 +113,14 @@ class Transformer(object):
         
             elif isinstance(value, dict):
                 d_fmt = []
-                d_fmt.append(handle_dict(value))
+                d_fmt.append(self.handle_dict(value))
                 d_fmt = ' and '.join(d_fmt)
                 fmt.append(d_fmt)
         
             elif field == '$lt':
                 fmt.append('{0}<{1}'.format(field, value))
             elif field == '$lte':
-                fmt.append('{0}<='.format(field, value))
+                fmt.append('{0}<={1}'.format(field, value))
             elif field == '$gt':
                 fmt.append('{0}>{1}'.format(field, value))
             elif field == '$gte':
@@ -114,6 +129,7 @@ class Transformer(object):
                 fmt.append('{0}!={1}'.format(field, value))
             elif field == '$eq' or not field.startswith('$'):
                 fmt.append('{0}={1}'.format(field, value))
+            
             # add other operators' formats behind here
         if len(adict) == 1:
             fmt = fmt[0]
@@ -130,22 +146,30 @@ class Transformer(object):
         def handle_find_criteria(criteria_string):
             crite_fmt = []
             criteria_dict = self.handle_string(criteria_string)
+            print 'find_critedia_dcit: '
+            print criteria_dict
             crite_fmt = self.handle_dict(criteria_dict)
+            print 'find_criteria_fmt: '
+            print crite_fmt
             return crite_fmt
 
         
-        def handle_projection(projetion_string):
+        def handle_projection(projection_string):
             proj_fmt = ''
+            projection_dict = {}
             if projection_string == '':
                 return proj_fmt
-            PROJECTION_PATTERN = r'\s*(.*)\s*:\s*(.*)\s*'
+            PROJECTION_PATTERN = r',?([^{}]*?):([^{}]*)'
             projection_m_iter = re.finditer(PROJECTION_PATTERN, projection_string)
             for  p_m in projection_m_iter:
                 p_field = p_m.group(1)
                 p_value = p_m.group(2)
-                projection_dict[p_field] = p_value 
+                projection_dict[p_field] = p_value
+                
+            print 'projection_dict: '
+            print projection_dict
 
-            proj_fmt = ','.join([key for key in projection_dict if projection[key] == '1'])
+            proj_fmt = ','.join([key for key in projection_dict.keys() if projection[key] == 1])
             return proj_fmt
 
 
@@ -189,21 +213,27 @@ class Transformer(object):
         #inner functions ending
 
         find_fmt = ''
-        FIND_ARGS_PATTERN = r'^(\{\s*(?P<criteria>.*)\s*\})?\s*,?\s*(\{\s*(?P<projection>.*)\s*\})?\s*,?\s*(\{\s*(?P<option>.*)\s*\})\s*$'
+        FIND_ARGS_PATTERN = r'\s*(?P<criteria>[^#]*)\s*#?\s*(?P<projection>.*)\s*$' #check here first, meta character '#'
         find_args_m = re.match(FIND_ARGS_PATTERN, self.op_args)
         criteria = find_args_m.group('criteria') # criteria string
         projection = find_args_m.group('projection') # projection string
         option_ops = self.option_ops
+        print 'find_criteria_string: ' + criteria
+        print 'find_projection_string: ' + projection
+        print 'find_option_ops_string: ' + option_ops
         
         criteria_fmt = handle_find_criteria(criteria)
         projection_fmt = handle_projection(projection)
         option_ops_fmt = handle_option_ops(option_ops)
+        print 'find_criteria_fmt: ' + criteria_fmt
+        print 'find_projection_fmt: ' + projection_fmt
+        print 'find_option_ops_fmt: ' + option_ops_fmt
         
         if projection_fmt == '':
             if criteria_fmt == '':
                 find_fmt = 'select * from {0} {1}'.format(self.coll, option_ops_fmt)
                 return find_fmt
-            find_fmt = 'select * from {0} where {1} {2}'.format(self.coll, criteria_fmt, option_ops_format)
+            find_fmt = 'select * from {0} where {1} {2}'.format(self.coll, criteria_fmt, option_ops_fmt)
             return find_fmt
             
         else:
@@ -249,7 +279,7 @@ class Transformer(object):
                 return ','.join(mul_list)
             if isinstance(insert_args, dict):
                 sin_list = [] 
-                for k, v in insert_args.items:
+                for k, v in insert_args.items():
                     sin_list.append(v)
                 return '({0})'.format(','.join(sin_list))
         #inner functions ending
@@ -257,8 +287,11 @@ class Transformer(object):
         INSERT_ARGS_PATTERN = r'^(\[\s*(.*)\s*\]|^\{\s*(.*)\s*\})$'
         insert_args_m = re.match(INSERT_ARGS_PATTERN, self.op_args)
         insert_args = insert_args_m.group(0)
-        insert_args = handle_insert_args(insert_args)
-        insert_fmt = args_to_fmt(insert_args)
+        print 'insert_args_string: ' + insert_args
+        
+        insert_fmt = ''
+        insert_args_fmt = args_to_fmt(handle_insert_args(insert_args))
+        print 'insert_args_fmt: ' + insert_args_fmt
         insert_fmt = 'insert into {0} values {1}'.format(self.coll, insert_fmt)
         return insert_fmt
         
@@ -269,7 +302,7 @@ class Transformer(object):
         # inner functions
         def handle_operations(astring):
             """operations string -> operation format string"""
-            OPERATTIONS_PATTERN = r'\s*(?P<operation>[$\w]+)\s*:\s*(\{\s*(?P<field>\w+)\s*:\s*(?P<value>\w+)\s*\})\s*'
+            OPERATIONS_PATTERN = r'\s*(?P<operation>[$\w]+)\s*:\s*(\{\s*(?P<field>\w+)\s*:\s*(?P<value>\w+)\s*\})\s*'
             operations_m_iter = re.finditer(OPERATIONS_PATTERN, astring)
             operation_fmt_list = []
             operation_fmt = ''
@@ -308,16 +341,23 @@ class Transformer(object):
         
         # inner functions definition ending    
 
-        UPDATE_ARGS_PATTERN = r'^(?P<criteria>.*),(?P<operations>.*),?\s*(?P<option>.*)?$'
+        UPDATE_ARGS_PATTERN = r'^(?P<criteria>.*?),(?P<operations>.*),?\s*(?P<option>.*)?$'
         
         update_criteria = re.match(UPDATE_ARGS_PATTERN, self.op_args).group('criteria') # criteria string
         update_operations = re.match(UPDATE_ARGS_PATTERN, self.op_args).group('operations') # operation string
         update_option = re.match(UPDATE_ARGS_PATTERN, self.op_args).group('option') # option string
+        print 'update_criteria_string: ' + update_criteria
+        print 'update_operations_string: ' + update_operations
+        print 'update_option_string: ' + update_option
+        
         criteria_fmt = handle_update_criteria(update_criteria)
         operations_fmt = handle_operations(update_operations)
-        option_fmt = handle_option(update_option)
+        #option_fmt = handle_option(update_option)
+        print 'criteria_fmt: ' + criteria_fmt
+        print 'operations_fmt: ' + operations_fmt
+        
         if criteria_fmt == '':
-            update_fmt = 'update {0} {1}'.format(self.coll, operation_fmt)
+            update_fmt = 'update {0} {1}'.format(self.coll, operations_fmt)
             return update_fmt
         update_fmt = 'update {0} {1} where {2}'.format(self.coll, operations_fmt, criteria_fmt)
         return update_fmt
@@ -328,7 +368,7 @@ class Transformer(object):
         """db.coll.remove(...)->delete from ..."""
         
         # inner functions
-        def handle_option(asrting):
+        def handle_option(astring):
             """option string -> option string format.
             As a  placeholder for  extending"""
             OPTION_PATTERN = r'\s*(?P<optional>\w+)\s*:\s*(?P<value>.*)\s*'
@@ -343,6 +383,7 @@ class Transformer(object):
                     pass
                 if op_optional == 'isolated':
                     pass
+            return option_fmt
     
         def handle_remove_criteria(astring):
             crite_fmt = []
@@ -354,9 +395,14 @@ class Transformer(object):
         REMOVE_ARGS_PATTERN = r'^(?P<criteria>.*),?(?P<option>.*)?$'
         remove_criteria = re.match(REMOVE_ARGS_PATTERN, self.op_args).group('criteria')
         remove_option = re.match(REMOVE_ARGS_PATTERN, self.op_args).group('option')
+        print 'remove_criteria_string: ' + remove_criteria
+        print 'remove_option_string: ' + remove_option
         
         criteria_fmt = handle_remove_criteria(remove_criteria)
         option_fmt = handle_option(remove_option)
+        print 'remove_criteria_fmt: ' + criteria_fmt
+        print 'remove_option_fmt: ' + option_fmt
+        
         if criteria_fmt == '':
             remove_fmt = 'delete from {0}'.format(self.coll)
             return remove_fmt
@@ -418,14 +464,18 @@ class Transformer(object):
         
 def main():
     t_list = []
-    t1 = Transformer("db.test.find({})")
-    t_list.append(t1)
-    t2 = Transformer("db.test.update({'a': 1},{$set:{}, $inc:{}})")
+    t_list.append("db.test.find({'c': 1, $or:['a':{$lt: 1}, 'd': {$gt: 9}]}#{'a': 1, 'b': 0})")
     
-    t_list.append(t2)
-    for t in t_list:
-        t.transform()
-
+    #t_list.append("db.test.find({})")
+    #t_list.append("db.test.update({'a': 1},{$set:{}, $inc:{}})")
+    #t_list.append("db.test.insert({'a': 1, 'b': 2})")
+    #t_list.append("db.test.remove()")
+    #t_list.append("db.test.remove({'a': 1})")
+    #t_list.append("db.test.find({}, {'a': 1, 'b': 0}")
+    for t_statement in t_list:
+        t = Thread(target=Transformer, args=(t_statement,))
+        t.start()
+        print '*' * 88
 
 
 if __name__ == '__main__':
