@@ -2,11 +2,11 @@
 # -*- encoding: utf-8 -*-
 #created by: laidongping2006@sina.com 
 
-
+from collections import defaultdict
 import re
 import sys
 from threading import Thread
-
+from Queue import Queue
 
 class Transformer(object):
     def __init__(self, m_statement):
@@ -29,11 +29,16 @@ class Transformer(object):
             self.op = m.group('op') # the first function name string
             self.op_args = m.group('op_args') # the first function args string
             self.option_ops = m.group('option_ops') # other function string
-            print 'self.db: ' + self.db
-            print 'self.coll: ' + self.coll
-            print 'self.op: ' + self.op
-            print 'self.op_args: ' + self.op_args
-            print 'self.option_ops: ' + self.option_ops
+            print 'self.db: '
+            print self.db
+            print 'self.coll: '
+            print self.coll
+            print 'self.op: '
+            print self.op
+            print 'self.op_args: '
+            print self.op_args
+            print 'self.option_ops: '
+            print self.option_ops
             print '-' * 66
             self.transform()
        
@@ -61,24 +66,29 @@ class Transformer(object):
         if self.op == 'createIndex':
             print 'it is a createIndex_statement'
             sql_fmt = self.parse_createIndex()
-            
-        print 'transformation completed'
+        i = 0    
+        print 'transformation complete'
         print sql_fmt
-
+        i += 1
+        print '{:*^88}'.format('end' + str(i))
 
 
     def handle_string(self, astring):
         """a mongo args string -> a args dict. e.g: '{XXX: XXXX, ....}'->
         {XXX: XXXX, ....}
         """
-        if astring == '':
-            return {}
-        STRING_PATTERN = r'(\s*(?P<key>[$\w]+)\s*:\s*(?P<value>.*)\s*,?)' # key: value, e.g: value:value or value:exp ...
         string_dict = {}
+        if astring == '':
+            return string_dict
+        
+        STRING_PATTERN = r'\s*(?P<key>[$\w\'\"]*?)\s*:\s*(?P<value>)\s*' # key: value, e.g: value:value or value:exp ...
         string_m_iter = re.finditer(STRING_PATTERN, astring)
+        print string_m_iter
         for str_m in string_m_iter:
             key  = str_m.group('key')
             value =  str_m.group('value')
+            print '{0}==>{1}'.format(key, value)
+      
             if value.startswith('['):
                 value_list = []
                 VALUE_LIST_PATTERN = r'\s*\{.*\}\s*,?' # {..},{...},...
@@ -159,7 +169,7 @@ class Transformer(object):
             projection_dict = {}
             if projection_string == '':
                 return proj_fmt
-            PROJECTION_PATTERN = r',?([^{}]*?):([^{}]*)'
+            PROJECTION_PATTERN = r'\s*([^{},]*?)\s*:\s*(\w+)\s*' #starting
             projection_m_iter = re.finditer(PROJECTION_PATTERN, projection_string)
             for  p_m in projection_m_iter:
                 p_field = p_m.group(1)
@@ -169,46 +179,59 @@ class Transformer(object):
             print 'projection_dict: '
             print projection_dict
 
-            proj_fmt = ','.join([key for key in projection_dict.keys() if projection[key] == 1])
+            proj_fmt = ','.join([key for key in projection_dict.keys() if projection_dict[key] == '1'])
+            print 'proj_fmt: '
+            print proj_fmt
             return proj_fmt
 
 
         def handle_option_ops(opstring):
             """opsting -> option_dict -> option_fmt """
+            option_fmt = ''
+            sort_fmt = ''
+            limit_fmt = ''
+            skip_fmt = ''
             if opstring == '':
-                option_fmt = ''
                 return option_fmt
-           
-            OPTION_PATTERN = r'\.(\w+)\(\s*(.*)\s*\)'
+            option_dict = {}           
+            OPTION_PATTERN = r'(\w+)\((.*?)\)'
             option_m_iter = re.finditer(OPTION_PATTERN, opstring)
-            option_fmt = []
+            
             for o_m in option_m_iter:
                 option_op_name = o_m.group(1)
                 option_op_args = o_m.group(2)
                 option_dict[option_op_name] = option_op_args
+            print 'option_dict: '
+            print option_dict
 
             for op, op_args in option_dict.items():
                 if op == 'sort':
-                    
-                    OP_ARGS_PATTERN = r'\s*(\w+)\s*:\s*(1|0)\s*'
-                    op_args_m_iter = re.finditer(OP_ARGS_PATTERN, op_args)
-                    for op_args_m in op_args_m_iter:
-                        sort_op_name = op_args_m.group(1)
-                        sort_op_value = op_args_m.group(2)
-
+                    sort_fields = []
+                    SORT_ARGS_PATTERN = r'\s*(.*?)\s*:\s*(1|0)\s*'
+                    sort_args_m_iter = re.finditer(SORT_ARGS_PATTERN, op_args)
+                    for sort_args_m in sort_args_m_iter:
+                        sort_op_name = sort_args_m.group(1)
+                        sort_op_value = sort_args_m.group(2)
                         if sort_op_value == '1':
-                           option_fmt.append('{0}'.format(sort_op_name))
+                            sort_fields.append(str(sort_op_name) + ' asc ')
+                           
                         if sort_op_value == '0':
-                            option_fmt.append('{0} desc'.format(sort_op_name))
-                    
-                    option_fmt = 'order by' + ','.join(option_fmt)
+                            sort_fields.append(str(sort_op_name) + ' desc ')
+                            
+                    for s_f in sort_fields:
+                        sort_fmt = sort_fmt + str(s_f)
+                        
+                    sort_fmt = 'order by ' + sort_fmt
                                         
-                    
                 if op == 'limit':
-                    option_fmt = option_fmt + 'limit {0}'.format(op_args)
-                if op == 'skip':
-                    option_fmt = option_fmt + 'skip {0}'.format(op_args)
+                    limit_fmt = 'limit {0}'.format(op_args)
                     
+                if op == 'skip':
+                    skip_fmt = 'skip {0}'.format(op_args)
+                    
+            option_fmt = sort_fmt + ' ' + limit_fmt + ' ' + skip_fmt
+            print 'option_fmt: '
+            print option_fmt
             return option_fmt
         #inner functions ending
 
@@ -218,16 +241,17 @@ class Transformer(object):
         criteria = find_args_m.group('criteria') # criteria string
         projection = find_args_m.group('projection') # projection string
         option_ops = self.option_ops
-        print 'find_criteria_string: ' + criteria
-        print 'find_projection_string: ' + projection
-        print 'find_option_ops_string: ' + option_ops
-        
+        print 'find_criteria_string: ', criteria
+        print 'find_projection_string: ', projection
+        print 'find_option_ops_string: ', option_ops
+        print '-' * 66
         criteria_fmt = handle_find_criteria(criteria)
         projection_fmt = handle_projection(projection)
         option_ops_fmt = handle_option_ops(option_ops)
-        print 'find_criteria_fmt: ' + criteria_fmt
-        print 'find_projection_fmt: ' + projection_fmt
-        print 'find_option_ops_fmt: ' + option_ops_fmt
+        print '-' * 66
+        #print 'find_criteria_fmt: ' + criteria_fmt
+        #print 'find_projection_fmt: ' + projection_fmt
+        #print 'find_option_ops_fmt: ' + option_ops_fmt
         
         if projection_fmt == '':
             if criteria_fmt == '':
@@ -237,7 +261,7 @@ class Transformer(object):
             return find_fmt
             
         else:
-            if criteria == '':
+            if criteria_fmt == '':
                 find_fmt = 'select {0} from {1} {2}'.format(projection_fmt, self.coll, option_ops_fmt)
                 return find_fmt
 
@@ -464,7 +488,7 @@ class Transformer(object):
         
 def main():
     t_list = []
-    t_list.append("db.test.find({'c': 1, $or:['a':{$lt: 1}, 'd': {$gt: 9}]}#{'a': 1, 'b': 0})")
+    t_list.append("db.test.find({'c': 1, $or:['a':{$lt: 1}, 'd': {$gt: 9}]}#{'a': 1, 'b': 0}).sort('a': 1).limit(4).skip(2)")
     
     #t_list.append("db.test.find({})")
     #t_list.append("db.test.update({'a': 1},{$set:{}, $inc:{}})")
@@ -472,10 +496,12 @@ def main():
     #t_list.append("db.test.remove()")
     #t_list.append("db.test.remove({'a': 1})")
     #t_list.append("db.test.find({}, {'a': 1, 'b': 0}")
+    i = 0
     for t_statement in t_list:
         t = Thread(target=Transformer, args=(t_statement,))
         t.start()
-        print '*' * 88
+        i += 1
+        print '{0:*^88}'.format('beginning' + str(i))
 
 
 if __name__ == '__main__':
