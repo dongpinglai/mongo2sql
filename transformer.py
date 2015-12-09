@@ -8,17 +8,23 @@ import sys
 from threading import Thread
 from Queue import Queue
 
+
+
+
 class Transformer(object):
+    
     def __init__(self, m_statement):
         print m_statement        
         try:
             PATTERN = r'^db\.(?P<coll>[^.]+)\.(?P<op>\w+)\((?P<op_args>[^)]*)\)\.?(?P<option_ops>.*)$'
             m = re.match(PATTERN, m_statement)
-            print m.groups()
+            print m.groups(0)
         except:
             #exc_type, exc_value, exc_traceback = sys.exc_info()
             #print exc_type, exc_value, exc_traceback
             print 'check your statement, please input statement again...'
+            
+            print '{:*^88}'.format('end')
             sys.exit(0)
 
         else:
@@ -29,22 +35,23 @@ class Transformer(object):
             self.op = m.group('op') # the first function name string
             self.op_args = m.group('op_args') # the first function args string
             self.option_ops = m.group('option_ops') # other function string
-            print 'self.db: '
-            print self.db
-            print 'self.coll: '
-            print self.coll
-            print 'self.op: '
-            print self.op
-            print 'self.op_args: '
-            print self.op_args
-            print 'self.option_ops: '
-            print self.option_ops
+            #print 'self.db: '
+            #print self.db
+            #print 'self.coll: '
+            #print self.coll
+            #print 'self.op: '
+            #print self.op
+            #print 'self.op_args: '
+            #print self.op_args
+            #print 'self.option_ops: '
+            #print self.option_ops
             print '-' * 66
             self.transform()
        
     def transform(self):
         """ selection logic"""
-        print 'transforming'
+        
+        print 'transforming...'
         sql_fmt = '' # sql statement var
         if self.op == 'find':
             print 'it is a find_statement'
@@ -66,11 +73,12 @@ class Transformer(object):
         if self.op == 'createIndex':
             print 'it is a createIndex_statement'
             sql_fmt = self.parse_createIndex()
-        i = 0    
-        print 'transformation complete'
+
+        print 'transformation complete...'
+        
         print sql_fmt
-        i += 1
-        print '{:*^88}'.format('end' + str(i))
+        
+        print '{:*^88}'.format('end')
 
 
     def handle_string(self, astring):
@@ -80,8 +88,9 @@ class Transformer(object):
         string_dict = {}
         if astring == '':
             return string_dict
+        # key: value, e.g: value:value or value:exp ...
+        STRING_PATTERN = r'\s*(?P<key>[$\w\'\"]*?)\s*:\s*(?P<value>[^{}\[\],]+|\[.*?\]|\{.*?\}),?\s*'
         
-        STRING_PATTERN = r'\s*(?P<key>[$\w\'\"]*?)\s*:\s*(?P<value>)\s*' # key: value, e.g: value:value or value:exp ...
         string_m_iter = re.finditer(STRING_PATTERN, astring)
         print string_m_iter
         for str_m in string_m_iter:
@@ -90,18 +99,20 @@ class Transformer(object):
             print '{0}==>{1}'.format(key, value)
       
             if value.startswith('['):
-                value_list = []
-                VALUE_LIST_PATTERN = r'\s*\{.*\}\s*,?' # {..},{...},...
+                value_list= []
+                #VALUE_LIST_PATTERN = r'\s*([^{}\[\],]+|\[.*\]|\{.*\})\s*'
+                VALUE_LIST_PATTERN = r'\s*(([$\w\'\"]*?)\s*:\s*([^{}\[\],]+|\{.*?\}|\[.*?\])),?\s*'
                 value_m_iter = re.finditer(VALUE_LIST_PATTERN, value)
                 for v_m in value_m_iter:
-                    value_list.append(self.handle_string(v_m.group(0)))
-                value = value_list
+                    print 'v_m.group(1): '
+                    print v_m.group(1)
+                    value_list.append(self.handle_string(v_m.group(1)))
+                    string_dict[key] = value_list
             elif value.startswith('{'):
                 value_dict = self.handle_string(value)
-                value = value_dict
+                string_dict[key] = value_dict
             else:
-                value = value
-            string_dict[key] = value
+                string_dict[key] = value
         return string_dict
 
     
@@ -116,31 +127,35 @@ class Transformer(object):
                 for v in value:
                     l_fmt.append(self.handle_dict(v))
                 if field == '$or':
-                    l_fmt = ' or '.join(l_fmt)
+                    l_fmt = '(' + ' or '.join(l_fmt) + ')'
                 elif field == '$and':
-                    l_fmt = ' and '.join(l_fmt)
+                    l_fmt = '(' + ' and '.join(l_fmt) +')'
                 fmt.append(l_fmt)
         
             elif isinstance(value, dict):
                 d_fmt = []
-                d_fmt.append(self.handle_dict(value))
+                for k, v in value.items():
+                    if k == '$lt':
+                        d_fmt.append('{0}<{1}'.format(field, v))
+                    elif k == '$lte':
+                        d_fmt.append('{0}<={1}'.format(field, v))
+                    elif k == '$gt':
+                        d_fmt.append('{0}>{1}'.format(field, v))
+                    elif k == '$gte':
+                        d_fmt.append('{0}>={1}'.format(field, v))
+                    elif k == '$ne':
+                        d_fmt.append('{0}!={1}'.format(field, v))
+                    elif k == '$eq':
+                        d_fmt.append('{0}={1}'.format(field, v))
+                    #add other operators' formats behind here
+                    else:
+                        d_fmt.append(self.handle_dict(v))
                 d_fmt = ' and '.join(d_fmt)
                 fmt.append(d_fmt)
-        
-            elif field == '$lt':
-                fmt.append('{0}<{1}'.format(field, value))
-            elif field == '$lte':
-                fmt.append('{0}<={1}'.format(field, value))
-            elif field == '$gt':
-                fmt.append('{0}>{1}'.format(field, value))
-            elif field == '$gte':
-                fmt.append('{0}>={1}'.format(field, value))
-            elif field == '$ne':
-                fmt.append('{0}!={1}'.format(field, value))
-            elif field == '$eq' or not field.startswith('$'):
+            else:
                 fmt.append('{0}={1}'.format(field, value))
             
-            # add other operators' formats behind here
+
         if len(adict) == 1:
             fmt = fmt[0]
             return fmt
@@ -269,12 +284,12 @@ class Transformer(object):
             return find_fmt
                         
 
-    def parse_insert(self):
+    def parse_insert(self, create = False):
         """db.coll.insert(...)->insert into table_name values ..."""
         
         # inner functions
         def handle_insert_args(astring):
-            """a string -> list or dict"""
+            """a string -> list or dict
             if astring.startswith('['):
                 args_list = []
                 MUL_PATTERN = r'\s*(\{.*\})'
@@ -292,31 +307,67 @@ class Transformer(object):
                     field = s_m.group(1)
                     value = s_m.group(2)
                     arg_dict[field] = value
+                print 'arg_dict: '
+                print arg_dict
                 return arg_dict
+            """
+            insert_args_dict = {}
+            if astring.startswith('{'):
+                insert_args_dict = self.handle_string(astring)
+                print 'insert_args_dict: '
+                print insert_args_dict
+                return insert_args_dict
+            if astring.startswith('['):
+                insert_args_dicts = []
+                STRING_PATTERN = r'\s*(\{.*?\})\s*'
+                string_m_iter = re.finditer(STRING_PATTERN, astring)
+                for string_m in string_m_iter:
+                    insert_arg = string_m.group(1)
+                    insert_args_dicts.append(self.handle_string(insert_arg))
+                print insert_args_dicts
+                return insert_args_dicts
+                
+                   
+                   
 
         def args_to_fmt(insert_args):
-            """ list or dict -> format string"""
+            """ list or dict -> format string """
+
+            values_list = []
+            fields_list = []
             if isinstance(insert_args, list):
                 mul_list = []
-                for i in insert_args:
-                    mul_list.append(args_to_fmt(i))
-                return ','.join(mul_list)
+                for value in insert_args:
+                    for k, v in value.items(): 
+                        mul_list.append(v)
+                        if k not in fields_list:
+                            fields_list.append(k)
+                    values_list.append(mul_list)
+                    return ','.join(fields_list), '({})'.format(','.join(mul_list)) # check here 12/10
             if isinstance(insert_args, dict):
                 sin_list = [] 
                 for k, v in insert_args.items():
                     sin_list.append(v)
-                return '({0})'.format(','.join(sin_list))
+                    fields_list.append(k)
+                return ','.join(fields_list), '({})'.format(','.join(sin_list))
+            
+            
         #inner functions ending
-                
+       
+            
+
         INSERT_ARGS_PATTERN = r'^(\[\s*(.*)\s*\]|^\{\s*(.*)\s*\})$'
         insert_args_m = re.match(INSERT_ARGS_PATTERN, self.op_args)
         insert_args = insert_args_m.group(0)
         print 'insert_args_string: ' + insert_args
-        
+        if not create :
+            pass
         insert_fmt = ''
-        insert_args_fmt = args_to_fmt(handle_insert_args(insert_args))
-        print 'insert_args_fmt: ' + insert_args_fmt
-        insert_fmt = 'insert into {0} values {1}'.format(self.coll, insert_fmt)
+        fields_fmt ,insert_args_fmt = args_to_fmt(handle_insert_args(insert_args))
+        
+        print 'insert_args_fmt: '
+        print insert_args_fmt
+        insert_fmt = 'insert into {0}({1}) values {2}'.format(self.coll, fields_fmt, insert_args_fmt)
         return insert_fmt
         
         
@@ -488,20 +539,22 @@ class Transformer(object):
         
 def main():
     t_list = []
-    t_list.append("db.test.find({'c': 1, $or:['a':{$lt: 1}, 'd': {$gt: 9}]}#{'a': 1, 'b': 0}).sort('a': 1).limit(4).skip(2)")
+    #t_list.append("db.test.find({'c': 1, $or:['a':{$lt: 1}, 'd': {$gt: 9}]}#{'a': 1, 'b': 0}).sort('a': 1).limit(4).skip(2)")
     
     #t_list.append("db.test.find({})")
     #t_list.append("db.test.update({'a': 1},{$set:{}, $inc:{}})")
-    #t_list.append("db.test.insert({'a': 1, 'b': 2})")
+    t_list.append("db.test.insert({'a': 1, 'b': 2})")
+    t_list.append("db.test.insert([{'c': 2, 'd': 4},{'d':5, 'to': 3}])")
     #t_list.append("db.test.remove()")
     #t_list.append("db.test.remove({'a': 1})")
     #t_list.append("db.test.find({}, {'a': 1, 'b': 0}")
-    i = 0
+    count = 0
     for t_statement in t_list:
         t = Thread(target=Transformer, args=(t_statement,))
         t.start()
-        i += 1
-        print '{0:*^88}'.format('beginning' + str(i))
+        
+        count += 1
+        print '{0:*^88}'.format('beginning' + str(count))
 
 
 if __name__ == '__main__':
