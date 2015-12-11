@@ -16,7 +16,7 @@ class DBOpTrans(object):
         print db_m.groups()
         self.op = db_m.group('op')
         self.op_args = db_m.group('op_args')
-        self.coll_op_trans = 
+
 
 
         self.transformer()
@@ -24,7 +24,7 @@ class DBOpTrans(object):
         if self.op == 'createCollection':
             print 'it is a createCollection_statement'
             sql_fmt = self.parse_create_collection()
-        print '{:#^88}'.format('end')
+        print '{:=^88}'.format('end')
         print sql_fmt
         return sql_fmt
 
@@ -97,7 +97,7 @@ class CollOpTrans(object):
             sql_fmt = self.parse_remove()
         if self.op == 'aggregate':
             print 'it is a aggregate_statement'
-            sql_fmt = self.parse_aggreaget()
+            sql_fmt = self.parse_aggregate()
         if self.op == 'createIndex':
             print 'it is a createIndex_statement'
             sql_fmt = self.parse_createIndex()
@@ -318,32 +318,12 @@ class CollOpTrans(object):
             return find_fmt
                         
 
-    def parse_insert(self, create = False):
+    def parse_insert(self):
         """db.coll.insert(...)->insert into table_name values ..."""
         
         # inner functions
         def handle_insert_args(astring):
             """a string -> list or dict
-            if astring.startswith('['):
-                args_list = []
-                MUL_PATTERN = r'\s*(\{.*\})'
-                m_iter = re.finditer(MUL_PATTERN, astring)
-                for m_m in m_iter:
-                    m_string = m_m.group(1)
-                    args_list.append(handle_insert_args(m_string))
-                return args_list
-                    
-            if astring.startswith('{'):
-                arg_dict = {}
-                SIN_PATTERN = r'\s*(\w+)\s*:\s*(\w+)\s*'
-                s_iter = re.finditer(SIN_PATTERN, astring)
-                for s_m in s_iter:
-                    field = s_m.group(1)
-                    value = s_m.group(2)
-                    arg_dict[field] = value
-                print 'arg_dict: '
-                print arg_dict
-                return arg_dict
             """
             insert_args_dict = {}
             if astring == '':
@@ -364,13 +344,9 @@ class CollOpTrans(object):
                     insert_args_dicts.append(self.handle_string(insert_arg))
                 print insert_args_dicts
                 return insert_args_dicts
-                
-                   
-                   
 
         def args_to_fmt(insert_args):
             """ list or dict -> format string """
-
             values_list = []
             fields_list = []
             if isinstance(insert_args, list):
@@ -414,23 +390,63 @@ class CollOpTrans(object):
                 sin_value_fmt = '({})'.format(','.join(sin_list))
                 return sin_field_fmt, sin_value_fmt
             
-            
+        def create_collection(astring):
+            insert_args  = handle_insert_args(astring)
+            insert_fields = []
+            insert_values = []
+            create_table_fmt = ''
+            new_args_dict = defaultdict(list)
+            insert_args_list = []
+            insert_args_fmt = ''
+            if isinstance(insert_args, list):
+                #insert_fileds = set([key for insert_arg in insert_args for key in insert_args.keys()])
+                for insert_args in insert_args:
+                    for k, v in insert_args.items():
+                        new_args_dict[k].append(v)
+                for key, val in new_args_dict.items():
+                    if re.match(r'\d+', val[0]):
+                        insert_args_list.append('{0} {1}'.format(key, 'number'))
+                    elif re.match(r'\s', val[0]):
+                        insert_args_list.append('{0} {1}'.format(key, 'null'))
+                    elif re.match(r'[\'\"].*?[\'\"]', val[0]):
+                        insert_args_list.append('{0} {1}'.format(key, 'varchar(30)'))
+                
+
+                insert_args_fmt = ','.join(insert_args_list)
+                    
+            elif isinstance(insert_args, dict):
+                for key, val in new_args_dict.items():
+                    if re.match(r'\d+', val[0]):
+                        insert_args_list.append('{0} {1}'.format(key, 'number'))
+                    #elif re.match(r'\s*', val[0]):
+                     #   insert_args_list.append('{0} {1}'.format(key, 'null'))
+                    elif re.match(r'[\'"].*?[\'"]', val[0]):
+                        insert_args_list.append('{0} {1}'.format(key, 'varchar(30)'))
+                insert_args_fmt = ','.join(insert_args_list)
+                    
+                                            
+            create_table_fmt = 'create table {0}({1})'.format(self.coll, insert_args_fmt)
+
+            return create_table_fmt
+
         #inner functions ending
        
             
-
+        
         INSERT_ARGS_PATTERN = r'^(\[\s*(.*)\s*\]|^\{\s*(.*)\s*\})$'
         insert_args_m = re.match(INSERT_ARGS_PATTERN, self.op_args)
         insert_args = insert_args_m.group(0)
         print 'insert_args_string: ' + insert_args
-        if create is True :
-            pass
         insert_fmt = ''
+        create_table_fmt = create_collection(insert_args)
+        print 'create_table: '
+        print create_table_fmt
+        insert_fmt = insert_fmt + create_table_fmt + ';'       
         fields_fmt ,insert_args_fmt = args_to_fmt(handle_insert_args(insert_args))
         
         print 'insert_args_fmt: '
         print insert_args_fmt
-        insert_fmt = 'insert into {0}({1}) values {2}'.format(self.coll, fields_fmt, insert_args_fmt)
+        insert_fmt = insert_fmt + 'insert into {0}({1}) values {2}'.format(self.coll, fields_fmt, insert_args_fmt)
         return insert_fmt
         
         
@@ -546,58 +562,160 @@ class CollOpTrans(object):
             return remove_fmt
         remove_fmt = 'delete from {0} where {1}'.format(self.coll, criteria_fmt)
         return remove_fmt
-        
-          
 
+    
 
     def parse_drop_collection(self):
         drop_coll_fmt = 'drop table {0}'.format(self.coll)
         return drop_coll_fmt
 
+
     def parse_aggregate(self):
         """mongo aggregate statement -> sql advanced select statement"""
-
         # inner functions
-        def handle_match(astring):
+        def handle_dict(adict):#{stage_dict}
+            for key, value in items():
+                if isinstance(value, list):
+                    for val in value:
+                        handle_dict(val)
+
+                    if key == '$or':
+                        pass
+                    elif key == '$and':
+                        pass
+                elif isinstance(value, dict):
+                    if key == '$match':
+                        handle_dict(value)
+                        pass
+                    elif key == '$group':
+                        pass
+                    elif key == '$sort':
+                        pass
+                    elif key == '$limit':
+                        
+                        pass
+                    elif key == '$text':
+                        pass
+                    elif key == '$sum':
+                        pass
+                    elif key == '$avg':
+                        pass
+                    elif key == '$first':
+                        pass
+                    elif key == '$last':
+                        pass
+                    elif key == '$max':
+                        pass
+                    elif key == '$min':
+                        pass
+                    elif key == '$push':
+                        pass
+                    elif key == 'addToSet':
+                        pass
+                    elif key == '$stdDevSamp':
+                        pass
+                    elif key == '$lt':
+                        pass
+                    elif key == '$lte':
+                        pass
+                    elif key == '$gt':
+                        pass
+                    elif key == '$gte':
+                        pass
+                    elif key == '$ne':
+                        pass
+                    elif key == '$eq':
+                        pass
+                    
+                else:
+                    pass
+
+                   
+        def handle_match_stage(astring):
+            match_fmt_string = ''
             match_dict = self.handle_string(astring)
+            print 'match_dict: '
+            print match_dict
             match_fmt_string = self.handle_dict(match_dict)
+            print 'match_fmt_string: ' + match_fmt_string
             return match_fmt_string
 
+        def handle_group_stage(astring):
+            proj_fmt_string = ''
+            group_fmt_string = ''
+            group_dict = self.handle_string(astring)
+            print 'group_dict: '
+            print group_dict
+            for key, val in group_dict.items():
+                if key = '_id':
+            
+            return proj_fmt_string, group_fmt_string
+            
+                
+        
+        def handle_projection_stage(astring):
+            pass
 
-        AGGREGATE_ARGS_PATTERN = r'\s*(?P<stagename>[$\w]+)\s*:\s*(?P<stageargs>.*)\s*,?'
+        def handle_sort_stage(astring):
+            pass
 
+        def handle_limit_stage(astring):
+            
+            pass
+
+
+        #end
+
+        AGGREGATE_ARGS_PATTERN = r'\s*(\{\s*(?P<stagename>[$\w]+)\s*:\s*(?P<stageargs>\{.*?\})\s*\})\s*'
+        aggregate_m_iter = re.finditer(AGGREGATE_ARGS_PATTERN, self.op_args)        
+        #print list(aggregate_m_iter)
         projection_fmt = ''
+        projection_fmt = []
         options_fmt = ''
-        aggregate_m_iter = re.finditer(AGGREGATE_ARGS_PATTERN, self.op_args)
-        stage__dict = {}
+        options_fmt_list = []
+        stage_dict = {}
         stage_name_list = []
+
         for a_m in aggregate_m_iter:
+            stage = a_m.group(1)
             stage_name = a_m.group('stagename')
             stage_args = a_m.group('stageargs')
-            stage__dict[stage_name] = stage_args
+            stage_dict[stage_name] = stage_args
             stage_name_list.append(stage_name)
+            print stage_name, '==>', stage_args
 
-        for stage_name, stage_args in stage_dict.items():
-            if stage_name == '$match' and stage_name_list.index('$match') < stage_name_list.index('$group'):
-                match_fmt = ' where ' + handle_match(stage_args)
-                options_fmt = options_fmt + match_fmt
+            if stage_name == '$match':
+                match_fmt = 'where ' + handle_match_stage(stage)
+                options_fmt_list.append(match_fmt)
 
-            if stage_name == '$group':
-                pass
+            elif stage_name == '$group':
+                proj_fmt, group_fmt = handle_group_stage(stage_args)
+                group_fmt = 'group by ' + group_fmt
+                projection_fmt_list.append(proj_fmt)
+                options_fmt_list.append(group_fmt)
+            #elif stage_name == '$match':
+             #   match_fmt = ' having ' + handle_match(stage_args)
+              #  options_fmt = options_fmt + match_fmt
                 
-            if stage_name == '$match' and stage_name_list.index('$match') > stage_name_list.index('$group'):
-                match_fmt = ' having ' + handle_match(stage_args)
-                options_fmt = options_fmt + match_fmt
-                
-            if stage_name == '$projection':
-                pass
-            if stage_name == '$sort':
-                pass
-            if stage_name == '$limit':
-                pass
-            if stage_name == '$sum':
-                pass
-        aggregate_fmt = 'select {0} from {1}'.format(projection_fmt,self.coll, options_fmt)        
+            elif stage_name == '$projection':
+                proj_fmt = handle_projection_stage(stage_args)
+                projection_fmt_list.append(proj_fmt)
+            elif stage_name == '$sort':
+                sort_fmt = 'order by ' + handle_sort_stage(stage_args)
+                options_fmt_list.append(sort_fmt)
+            elif stage_name == '$limit':
+                limit_fmt = 'limit ' + handle_limit_stage(stage_args)
+                options_fmt_list.append(limit_fmt)
+           
+        if len(projection_fmt_list) == 1 or projection_fmt_list == []:
+            projection_fmt = projection_fmt_list[0]
+        else:            
+            projection_fmt = ','.join(projection_fmt_list)
+        if len(options_fmt_list) < 2:
+            options_fmt = options_fmt_list[0]
+        else:
+            options_fmt = ' '.join(options_fmt_list)
+        aggregate_fmt = 'select {0} from {1} {2}'.format(projection_fmt,self.coll, options_fmt)        
         return aggregate_fmt
     
     def parse_createIndex(self):
@@ -635,7 +753,7 @@ def main():
     t_list.append("db.test.update({'a': 1},{$set:{}, $inc:{}})")
     t_list.append("db.test.update({'a': 1},{$set:{'b': '111b'}, $inc:{'c': 21}})")    
     t_list.append("db.test.insert([{'a': 1, 'b': 2}, {'a': '2222', 'b': '3333d'}])")
-    t_list.append("db.test.insert([{'c': 2, 'd': 4},{'d':5, 'to': 3}])")
+
     t_list.append("db.test.remove()")
     t_list.append("db.test.remove({'a': 1})")
     t_list.append("db.test.find({}, {'a': 1, 'b': 0}")
@@ -643,7 +761,10 @@ def main():
     t_list.append("db.user.createIndex({user_id: 1})")
     t_list.append("db.user.createIndex({user_id: 1, age:-1})")
     t_list.append("db.user.drop()")
-    """
+    
+    t_list.append("db.test.insert([{'c': '2', 'd': 4},{'d':5, 'to': 3}])")     """
+    t_list.append('db.articles.aggregate([{ $match: { $text: { $search: "saber -claro", $language: "es" } } },{ $group: { _id: null, views: { $sum: "$views" } } }])')
+    #t_list.append('db.orders.aggregate( [{ $match: { status: \'A\' } },{$group: {_id: "$cust_id",total: { $sum: "$price" }}},{ $match: { total: { $gt: 250 } } }] )')
     count = 0
     for t_statement in t_list:
         t = Thread(target=CollOpTrans, args=(t_statement,))
@@ -651,7 +772,7 @@ def main():
 
         count += 1
         print '{0:*^88}'.format('beginning' + str(count))
-        
+    t.join()    
     count = 0
     s_list = []
     s_list.append("db.createCollection('user')")    
@@ -659,7 +780,7 @@ def main():
         s = Thread(target=DBOpTrans, args=(s_statement,))
         s.start()
         count += 1
-        print ('beginning %d' % count).center(88, '#')
+        print ('beginning %d' % count).center(88,'=')
 
 
 if __name__ == '__main__':
