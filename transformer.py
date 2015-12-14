@@ -123,7 +123,7 @@ class CollOpTrans(object):
         if astring == '':
             return string_dict
         # key: value, e.g: value:value or value:exp ...
-        STRING_PATTERN = r'\s*(?P<key>[$\w\'\"]*?)\s*:\s*(?P<value>[^{}\[\],]+|\[.*?\]|\{.*?\}),?\s*'
+        STRING_PATTERN = r'\s*(?P<key>[$\w\'\"]*?)\s*:\s*(?P<value>[^{}\[\],]+|\[.*?\]|\{.*?\})\s*,?'
         
         string_m_iter = re.finditer(STRING_PATTERN, astring)
         print string_m_iter
@@ -135,7 +135,7 @@ class CollOpTrans(object):
             if value.startswith('['):
                 value_list= []
                 #VALUE_LIST_PATTERN = r'\s*([^{}\[\],]+|\[.*\]|\{.*\})\s*'
-                VALUE_LIST_PATTERN = r'\s*(([$\w\'\"]*?)\s*:\s*([^{}\[\],]+|\{.*?\}|\[.*?\])),?\s*'
+                VALUE_LIST_PATTERN = r'\s*(([$\w\'\"]*?)\s*:\s*([^{}\[\],]+|\{.*\}|\[.*\])),?\s*'
                 value_m_iter = re.finditer(VALUE_LIST_PATTERN, value)
                 for v_m in value_m_iter:
                     print 'v_m.group(1): '
@@ -188,7 +188,6 @@ class CollOpTrans(object):
                 fmt.append(d_fmt)
             else:
                 fmt.append('{0}={1}'.format(field, value))
-            
 
         if len(adict) == 1:
             fmt = fmt[0]
@@ -285,10 +284,14 @@ class CollOpTrans(object):
         #inner functions ending
 
         find_fmt = ''
-        FIND_ARGS_PATTERN = r'\s*(?P<criteria>[^#]*)\s*#?\s*(?P<projection>.*)\s*$' #check here first, meta character '#'
+        FIND_ARGS_PATTERN = r'\s*(?P<criteria>\{[^}]*(}[^}]*)*\})\s*(?P<projection>,.*)\s*$'
         find_args_m = re.match(FIND_ARGS_PATTERN, self.op_args)
-        criteria = find_args_m.group('criteria') # criteria string
-        projection = find_args_m.group('projection') # projection string
+        if find_args_m is None:
+            criteria =''
+            projection = ''
+        else:
+            criteria = find_args_m.group('criteria')
+            projection = find_args_m.group('projection')
         option_ops = self.option_ops
         print 'find_criteria_string: ', criteria
         print 'find_projection_string: ', projection
@@ -573,31 +576,44 @@ class CollOpTrans(object):
     def parse_aggregate(self):
         """mongo aggregate statement -> sql advanced select statement"""
         # inner functions
+        def handle_string(astring):
+            adict = self.handle_string(astring)
+            print adict
+            return adict
+
+            
+            
+
+
         def handle_dict(adict):#{stage_dict}
-            for key, value in items():
+            fmt = ''
+            l_fmt = ''
+            d_fmt = ''
+            fmt_list = []
+            l_fmt_list = []
+            d_fmt_list = []
+            for key, value in adict.items():
                 if isinstance(value, list):
                     for val in value:
-                        handle_dict(val)
+                        l_fmt_list.append(handle_dict(val))
 
                     if key == '$or':
-                        pass
+                        l_fmt = ' or '.join(l_fmt_list)
                     elif key == '$and':
-                        pass
+                        l_fmt = ' and '.join(l_fmt_list)
+                    fmt_list.append(l_fmt)
                 elif isinstance(value, dict):
+
                     if key == '$match':
-                        handle_dict(value)
-                        pass
+                        d_fmt_list.append(handle_dict(value))
                     elif key == '$group':
-                        pass
+                        d_fmt_list.append(handle_dict(value))
                     elif key == '$sort':
-                        pass
+                        d_fmt_list.append(handle_dict(value))
                     elif key == '$limit':
-                        
-                        pass
+                        d_fmt_list.append(handle_dict(value))
                     elif key == '$text':
-                        pass
-                    elif key == '$sum':
-                        pass
+                        d_fmt_list.append(handle_dict(value))
                     elif key == '$avg':
                         pass
                     elif key == '$first':
@@ -614,40 +630,57 @@ class CollOpTrans(object):
                         pass
                     elif key == '$stdDevSamp':
                         pass
-                    elif key == '$lt':
-                        pass
-                    elif key == '$lte':
-                        pass
-                    elif key == '$gt':
-                        pass
-                    elif key == '$gte':
-                        pass
-                    elif key == '$ne':
-                        pass
-                    elif key == '$eq':
-                        pass
-                    
+                    else:
+                        for k, v in value.items():
+                            if k == '$lt':
+                                d_fmt_list.append('{0} < {1}'.format(key, v))
+                            elif k == '$lte':
+                                d_fmt_list.append('{0} <= {1}'.format(key, v))
+                            elif k == '$gt':
+                                d_fmt_list.append('{0} > {1}'.format(key, v))
+                            elif k == '$gte':
+                                d_fmt_list.append('{0} >= {1}'.format(key, v))
+                            elif k == '$ne':
+                                d_fmt_list.append('{0} != {1}'.format(key, v))
+                            elif k == '$eq':
+                                d_fmt_list.append('{0} = {1}'.format(key, v))
+                            elif k == '$sum':
+                                sum_val = value['$sum']
+                                if sum_val.startswith('$'):
+                                    d_fmt_list.append('count({0}) as {1}'.format(sum_val, key))
+                    d_fmt = ' and '.join(d_fmt_list)
+                    fmt_list.append(d_fmt)                    
+                        
+                        
                 else:
-                    pass
+                    fmt_list.append('{0}={1}'.format(key, value))
+            if len(adict) == 1:
+                fmt = fmt_list[0]
+                return projection_fmt, 
+                                    
+            fmt = ' and '.join(fmt_list)
+            return fmt
 
                    
         def handle_match_stage(astring):
             match_fmt_string = ''
-            match_dict = self.handle_string(astring)
+            match_dict = handle_string(astring)
             print 'match_dict: '
             print match_dict
-            match_fmt_string = self.handle_dict(match_dict)
-            print 'match_fmt_string: ' + match_fmt_string
+            match_fmt_string = handle_dict(match_dict)
+            print 'match_fmt_string: '
+            print match_fmt_string
             return match_fmt_string
 
         def handle_group_stage(astring):
             proj_fmt_string = ''
             group_fmt_string = ''
-            group_dict = self.handle_string(astring)
+            group_dict = handle_string(astring)
             print 'group_dict: '
             print group_dict
             for key, val in group_dict.items():
-                if key = '_id':
+                if key == '_id':
+                    pass
             
             return proj_fmt_string, group_fmt_string
             
@@ -666,23 +699,25 @@ class CollOpTrans(object):
 
         #end
 
-        AGGREGATE_ARGS_PATTERN = r'\s*(\{\s*(?P<stagename>[$\w]+)\s*:\s*(?P<stageargs>\{.*?\})\s*\})\s*'
+        #AGGREGATE_ARGS_PATTERN = r'\s*(\{\s*(?P<stagename>[$\w]+)\s*:\s*(?P<stageargs>\{.*\})\s*\})\s*'
+        AGGREGATE_ARGS_PATTERN = r'\s*(\{[^{}]+([{}][^{}]+)*\})\s*'
         aggregate_m_iter = re.finditer(AGGREGATE_ARGS_PATTERN, self.op_args)        
         #print list(aggregate_m_iter)
         projection_fmt = ''
-        projection_fmt = []
+        projection_fmt_list = []
         options_fmt = ''
         options_fmt_list = []
         stage_dict = {}
         stage_name_list = []
 
         for a_m in aggregate_m_iter:
-            stage = a_m.group(1)
-            stage_name = a_m.group('stagename')
-            stage_args = a_m.group('stageargs')
-            stage_dict[stage_name] = stage_args
+            stage_string = a_m.group(1)
+            print stage_string
+            stage_dict = handle_string(stage_string)
+            stage_name = stage_dict.keys()[0]
+            stage_args = stage_dict[stage_name]
             stage_name_list.append(stage_name)
-            print stage_name, '==>', stage_args
+
 
             if stage_name == '$match':
                 match_fmt = 'where ' + handle_match_stage(stage)
@@ -747,23 +782,26 @@ class CollOpTrans(object):
         
 def main():
     t_list = []
-    """t_list.append("db.test.find({'c': 1, $or:['a':{$lt: 1}, 'd': {$gt: 9}]}#{'a': 1, 'b': 0}).sort('a': 1).limit(4).skip(2)")
-    
-    t_list.append("db.test.find({})")
+    #t_list.append("db.test.find({'c': 1, $or:['a':{$lt: 1}, 'd': {$gt: 9}]},{'a': 1, 'b': 0}).sort('a': 1).limit(4).skip(2)")
+    #t_list.append("db.test.find({}, {'a': 1, 'b': 0})")   
+    #t_list.append("db.test.find({})")
+    """
     t_list.append("db.test.update({'a': 1},{$set:{}, $inc:{}})")
     t_list.append("db.test.update({'a': 1},{$set:{'b': '111b'}, $inc:{'c': 21}})")    
     t_list.append("db.test.insert([{'a': 1, 'b': 2}, {'a': '2222', 'b': '3333d'}])")
 
     t_list.append("db.test.remove()")
     t_list.append("db.test.remove({'a': 1})")
-    t_list.append("db.test.find({}, {'a': 1, 'b': 0}")
+
 
     t_list.append("db.user.createIndex({user_id: 1})")
     t_list.append("db.user.createIndex({user_id: 1, age:-1})")
     t_list.append("db.user.drop()")
     
     t_list.append("db.test.insert([{'c': '2', 'd': 4},{'d':5, 'to': 3}])")     """
-    t_list.append('db.articles.aggregate([{ $match: { $text: { $search: "saber -claro", $language: "es" } } },{ $group: { _id: null, views: { $sum: "$views" } } }])')
+    t_list.append('db.articles.aggregate([{ $match: { $text: { $search: "saber -claro", $language: "es" }, a:{\'$lt\':9}}},{ $group: { _id: null, views: { $sum: "$views" } } }])')
+    t_list.append('db.orders.aggregate([{$group: {_id: {cust_id: "$cust_id",ord_date: {month: { $month: "$ord_date" },day: { $dayOfMonth: "$ord_date" },year: { $year: "$ord_date"}}},total: { $sum: "$price" }}},{ $match: { total: { $gt: 250 } } }] )')
+
     #t_list.append('db.orders.aggregate( [{ $match: { status: \'A\' } },{$group: {_id: "$cust_id",total: { $sum: "$price" }}},{ $match: { total: { $gt: 250 } } }] )')
     count = 0
     for t_statement in t_list:
