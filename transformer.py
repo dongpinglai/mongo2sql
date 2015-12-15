@@ -614,16 +614,8 @@ class CollOpTrans(object):
                         d_fmt_list.append(handle_dict(value))
                     elif key == '$text':
                         d_fmt_list.append(handle_dict(value))
-                    elif key == '$avg':
-                        pass
-                    elif key == '$first':
-                        pass
-                    elif key == '$last':
-                        pass
-                    elif key == '$max':
-                        pass
-                    elif key == '$min':
-                        pass
+                    
+                        
                     elif key == '$push':
                         pass
                     elif key == 'addToSet':
@@ -646,8 +638,36 @@ class CollOpTrans(object):
                                 d_fmt_list.append('{0} = {1}'.format(key, v))
                             elif k == '$sum':
                                 sum_val = value['$sum']
-                                if sum_val.startswith('$'):
-                                    d_fmt_list.append('count({0}) as {1}'.format(sum_val, key))
+                                if key == count:
+                                    d_fmt_list.append('count({0})'.format('*'))
+                                elif not isinstance(sum_val,list):
+                                    d_fmt_list.append('sum({0}) as {1}'.format(sum_val.replace('$',''), key))
+                                elif isinstance(sum_val, dict):
+                                    d_fmt_list.append('sum({0}) as {1}'.format(handle_dict(sum_val), key))
+                                else:
+                                    d_fmt_list.append('sum({0}) as {1}'.format(','.join(sum_val).repalce('$', ''),key))
+                            elif key == '$avg':
+
+                                pass
+                            elif key == '$multiply':
+                                pass 
+
+                            elif key == '$first':
+
+                                pass
+
+                            elif key == '$last':
+
+                                pass
+
+                            elif key == '$max':
+
+                                pass
+
+                            elif key == '$min':
+
+                                pass
+                    
                     d_fmt = ' and '.join(d_fmt_list)
                     fmt_list.append(d_fmt)                    
                         
@@ -673,15 +693,23 @@ class CollOpTrans(object):
             return match_fmt_string
 
         def handle_group_stage(astring):
+            proj_fmt_list = []
             proj_fmt_string = ''
+            group_fmt_list = []
             group_fmt_string = ''
-            group_dict = handle_string(astring)
+            group_dict = self.handle_string(astring)
             print 'group_dict: '
             print group_dict
             for key, val in group_dict.items():
                 if key == '_id':
-                    pass
-            
+                    for k in val.keys():
+                        group_fmt_list.append(k)
+                        proj_fmt_list.append(k)
+                else:
+                    proj_fmt_list.append(handle_dict(val))
+
+            proj_fmt_string = ','.join(proj_fmt_list)
+            group_fmt_string = ','.join(group_fmt_list)
             return proj_fmt_string, group_fmt_string
             
                 
@@ -700,7 +728,7 @@ class CollOpTrans(object):
         #end
 
         #AGGREGATE_ARGS_PATTERN = r'\s*(\{\s*(?P<stagename>[$\w]+)\s*:\s*(?P<stageargs>\{.*\})\s*\})\s*'
-        AGGREGATE_ARGS_PATTERN = r'\s*(\{[^{}]+([{}][^{}]+)*\})\s*'
+        AGGREGATE_ARGS_PATTERN = r'\s*(\{[^}]+([}][^}]+)*\})\s*'
         aggregate_m_iter = re.finditer(AGGREGATE_ARGS_PATTERN, self.op_args)        
         #print list(aggregate_m_iter)
         projection_fmt = ''
