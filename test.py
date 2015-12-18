@@ -8,7 +8,7 @@ def connect(hostname, username, password, database, port=3306):
     return cur
 
 class ExtractSql:
-    global connect
+
     def __init__(self, obj):
         self.obj = obj
 
@@ -17,26 +17,27 @@ class ExtractSql:
         print sql
         cur = connect('localhost', 'root', 'lai', "test")      
         count = cur.execute(sql)
+        #cur.commit()
+        #if sql.startswith('SELECT'):
         print "there are %d rows record" % count
         #result = cur.fetchmany(10)
-        cur.commit()
         result = cur.fetchall()
         return iter(result)
 
 
 
-    #def execute(self):
-     #   return 
+    #def __next__(self):
+     #   for item in result:
+      #      return item
+
 
 
 def db_execute_create(db):
-    cur = connect('localhost', 'root', 'lai', "test")      
-    cur.execute("CREATE DATABSE {}".format(db.name))
+    return "CREATE DATABSE {}".format(db.name)
     
 
 def db_execute_del(db):
-    cur = connect('localhost', 'root', 'lai', "test")      
-    cur.execute("DROP DATABSE {}".format(db.name))
+    return "DROP DATABSE {}".format(db.name)
 
 
 class Db(dict, ExtractSql):
@@ -46,10 +47,17 @@ class Db(dict, ExtractSql):
     def __init__(self, name):
         self.name = name
 
-    def __getattr__(self, key):
-        if key not in ["create", "del"]:
-            return Table(self, key)
-        return db_execute_create(self)
+    def __getattr__(self, attr):
+        if attr not in ["createDatabase", "dropDatabase"]:
+            return Table(self, attr)
+        elif attr == "createDatabase":
+            return db_execute_create(self)
+        elif attr == "dropDatabase":
+            return db_execute_drop(self)
+            
+    def to_sql(self):
+        if attr in ["createDatabase", "dropDatabase"]:
+            return self.getattr(attr)
 
 
 class Table(object, ExtractSql):
@@ -160,7 +168,7 @@ class Remove(object, ExtractSql):
         self.condition = condition
 
     def to_sql(self):
-        global handle_condition
+
         condition = handle_condition(self.condition)
         return "DELETE FROM %s WHERE %s" % (self.table.name, condition)
         
@@ -191,7 +199,7 @@ class Update(object, ExtractSql):
         return ','.join(operation_fmt_list)
             
     def to_sql(self):
-        global handle_condition
+
         condition = handle_condition(self.condition)
         opertion  = self.handle_operation()
         return "UPDATE %s %s WHERE %s" % (self.table.name, opertion, condition)
@@ -214,7 +222,7 @@ class Find(object, ExtractSql):
         return proj_fmt
 
     def to_sql(self):
-        global handle_condition
+
         condition = handle_condition(self.condition) 
         field = self.handle_field()
         if field != '':
@@ -234,6 +242,9 @@ class Find(object, ExtractSql):
 
     def sort(self, condition):
         return Sort(self, condition)
+
+    def __getattr__(self, attr):
+        pass 
         
 class Limit(object, ExtractSql):
     def __init__(self, find, count):
@@ -276,12 +287,13 @@ class Del(object, ExtractSql):
 
 
 if __name__ == "__main__":        
-    d = Db("db1")
-    for item in d.pet.update({"name":'Slim'},{"$set": {"name":"ttt"}}):
+    db1 = Db('')#.createDatabase()
+    print db1.name 
+    for item in db1.pet.find(): # ,{"$set": {"name":"ttt"}}):
         print item
     
 
-
+#数据的建立和
 #limit， sort， skip 的连接查询语句， skip语句mysql对接提示错误。
 #insert语句mysql对接提示错误。
 #remove语句mysql对接提示错误。
