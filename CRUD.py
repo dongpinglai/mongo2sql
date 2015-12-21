@@ -2,43 +2,33 @@
 # -*- encoding: utf-8 -*-
 import MySQLdb
 
+configure = {"hostname": "localhost", "username": "root", "password": "lai", "database": "test" }    
+
 def connect(hostname, username, password, database, port=3306):
     conn = MySQLdb.connect(host=hostname, user=username, passwd=password, db=database, port=port)
     cur = conn.cursor()
     return cur
+
+cursor = connect(**configure)
 
 class ExtractSql:
 
     def __init__(self, obj):
         self.obj = obj
 
-    def __iter__(self):
+    def __iter__(self): # for Find
         sql =  self.to_sql()
         print sql
-        cur = connect('localhost', 'root', 'lai', "test")      
-        count = cur.execute(sql)
-        #cur.commit()
-        #if sql.startswith('SELECT'):
+        count = cursor.execute(sql)
         print "there are %d rows record" % count
-        #result = cur.fetchmany(10)
-        result = cur.fetchall()
+        result = cursor.fetchall()
         return iter(result)
-
-
-
-    #def __next__(self):
-     #   for item in result:
-      #      return item
-
-
-
-def db_execute_create(db):
-    return "CREATE DATABSE {}".format(db.name)
-    
-
-def db_execute_del(db):
-    return "DROP DATABSE {}".format(db.name)
-
+    def execute(self): # insert, update, remove etc
+        sql = self.to_sql()
+        print sql
+        count = cursor.execute(sql)
+        return count
+        
 
 class Db(dict, ExtractSql):
 
@@ -46,20 +36,22 @@ class Db(dict, ExtractSql):
 
     def __init__(self, name):
         self.name = name
-
+    def createDatabase(self):
+        return "CREATE DATABSE {}".format(self.name)
+        
+    def dropDatabase(self):
+        return "DROP DATABSE {}".format(self.name)
+        
     def __getattr__(self, attr):
         if attr not in ["createDatabase", "dropDatabase"]:
             return Table(self, attr)
-        elif attr == "createDatabase":
-            return db_execute_create(self)
-        elif attr == "dropDatabase":
-            return db_execute_drop(self)
+
             
-    def to_sql(self):
-        if attr in ["createDatabase", "dropDatabase"]:
-            return self.getattr(attr)
 
+            
+    
 
+    
 class Table(object, ExtractSql):
     def __init__(self, db, name):
         self.db = db
@@ -76,9 +68,13 @@ class Table(object, ExtractSql):
 
     def update(self, condition, operation):
         return Update(self, condition, operation)
+
+    def __getattr__(self, attr):
+        pass
+
         
 def handle_condition(condition):
-        """a args dict -> a sql format string """
+        """a condition dict -> a sql format string """
         fmt = []
         if condition == {} or condition is None:
                 return ''
@@ -126,6 +122,7 @@ def handle_condition(condition):
         return fmt
 
 class Insert(object, ExtractSql):
+    """ Insert doc string"""
     def __init__(self, table, doc):
         self.table = table
         self.doc = doc
@@ -144,14 +141,15 @@ class Insert(object, ExtractSql):
 
             for new_d in new_doc:
                 mul_value_list = [val for val in new_d.values()]
-                values_list.append('({})'.format(','.join(mul_value_list)))
+                #values_list.append('({0})'.format(','.join(mul_value_list)))
+                values_list.append(str(tuple(mul_value_list)))
             mul_value_fmt = ','.join(values_list)
             mul_field_fmt = ','.join(set(fields_list))
             return mul_field_fmt, mul_value_fmt
         if isinstance(self.doc, dict):
             sin_list = []
             for k, v in self.doc.items():
-                sin_list.append(v)
+                sin_list.append(str(v))
                 fields_list.append(k)
             sin_field_fmt = ','.join(fields_list)
             sin_value_fmt = '({})'.format(','.join(sin_list))
@@ -170,6 +168,8 @@ class Remove(object, ExtractSql):
     def to_sql(self):
 
         condition = handle_condition(self.condition)
+        if condition == '':
+            return "Drop table %s" % self.table.name
         return "DELETE FROM %s WHERE %s" % (self.table.name, condition)
         
 
@@ -251,6 +251,9 @@ class Limit(object, ExtractSql):
         self.find = find
         self.count = count
 
+    def skip(self, count):
+        return Skip(self, count)
+
     def to_sql(self):
         return "%s LIMIT %d" % (self.find.to_sql(), self.count)
 
@@ -267,7 +270,12 @@ class Sort(object, ExtractSql):
     def __init__(self, find, condition):
         self.find = find
         self.condition = condition
+    def limit(self, count):
+        return Limit(self, count)
 
+    def skip(self, count):
+        return Skip(self, count)
+        
     def to_sql(self):
         sort_fmt_list = []
         for key, val in self.condition.items():
@@ -279,22 +287,10 @@ class Sort(object, ExtractSql):
         return "%s ORDER BY %s" % (self.find.to_sql(), sort_fmt)
     
 
-class Del(object, ExtractSql):
-    def __init__(self, table):
-        self.table = table
-    def to_sql(self):
-        return "DROP TABLE %s" % self.table.name
-
-
-if __name__ == "__main__":        
-    db1 = Db('')#.createDatabase()
-    print db1.name 
-    for item in db1.pet.find(): # ,{"$set": {"name":"ttt"}}):
-        print item
+if __name__ == "__main__":
+    db = Db('test')
+    for result in db.pet.find().sort({"name": 1}).limit(10).skip(1):
+        print result
     
-
-#数据的建立和
-#limit， sort， skip 的连接查询语句， skip语句mysql对接提示错误。
-#insert语句mysql对接提示错误。
-#remove语句mysql对接提示错误。
-#update语句mysql对接提示错误。
+    count = db.pet.remove({"name": "Slim"}).execute()
+    print count
