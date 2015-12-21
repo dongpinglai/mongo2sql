@@ -69,6 +69,9 @@ class Table(object, ExtractSql):
     def update(self, condition, operation):
         return Update(self, condition, operation)
 
+    def save(self, doc, write_concern):
+        return Save(self, doc, write_concern)
+
     def __getattr__(self, attr):
         pass
 
@@ -104,6 +107,9 @@ def handle_condition(condition):
                         d_fmt.append('{0}!={1}'.format(field, v))
                     elif k == '$eq':
                         d_fmt.append('{0}={1}'.format(field, v))
+                    elif k == "$in":
+                        d_fmt.append('{0} IN ({1})'.format(field, str(tuple(v))))
+                    
 
                     else:
                         d_fmt.append(handle_condition(v))
@@ -120,6 +126,18 @@ def handle_condition(condition):
             return fmt
         fmt = ' and '.join(fmt)
         return fmt
+        
+
+class Save(object, ExtractSql, Insert):
+    def __init__(self, table, doc, write_concern):
+        self.table = table
+        self.doc = doc
+        self.write_concern = write_concern
+
+    def to_sql(self):
+        if '_id' in self.doc.keys():
+            return Update(self.table, {"_id": self.doc["_id"]}, self.doc).to_sql()
+        return Insert(self.table, self.doc).to_sql()
 
 class Insert(object, ExtractSql):
     """ Insert doc string"""
@@ -174,10 +192,11 @@ class Remove(object, ExtractSql):
         
 
 class Update(object, ExtractSql):
-    def __init__(self, table, condition, operation):
+    def __init__(self, table, condition, operation, option=None):
         self.table = table
         self.condition = condition
         self.operation = operation
+        self.option = option
 
     def handle_operation(self):
         operation_fmt_list = []
@@ -193,16 +212,19 @@ class Update(object, ExtractSql):
                 operation_fmt = 'alter table {0} drop {1}'.format(self.table.name, field)
             elif op == '$push':
                 operation_fmt = 'alter table {0} add {1}, set {2}={3}'.format(self.table.name, field, field, value)
+            else:
+                operation_fmt = 'set {0}={1}'.format(field, value)
             operation_fmt_list.append(operation_fmt)
         if len(operation_fmt_list) == 1:
             return operation_fmt_list[0]
         return ','.join(operation_fmt_list)
             
     def to_sql(self):
-
         condition = handle_condition(self.condition)
-        opertion  = self.handle_operation()
-        return "UPDATE %s %s WHERE %s" % (self.table.name, opertion, condition)
+        operation  = self.handle_operation()
+        if operation == "":
+            raise ValueError('The secend parameter can\'t be \'{}\'')
+        return "UPDATE %s %s WHERE %s" % (self.table.name, operation, condition)
         
 class Find(object, ExtractSql):
     def __init__(self, table, condition=None, field=None):
@@ -247,28 +269,31 @@ class Find(object, ExtractSql):
         pass 
         
 class Limit(object, ExtractSql):
-    def __init__(self, find, count):
-        self.find = find
+    def __init__(self, obj, count):
+        self.obj = obj
         self.count = count
 
     def skip(self, count):
         return Skip(self, count)
 
     def to_sql(self):
-        return "%s LIMIT %d" % (self.find.to_sql(), self.count)
+        return "%s LIMIT %d" % (self.obj.to_sql(), self.count)
 
 class Skip(object, ExtractSql):
-    def __init__(self, find, count):
-        self.find = find
+    def __init__(self, obj, count):
+        self.obj = obj
         self.count = count
 
+    def limit(self, count):
+        return Limit(self, count)
+
     def to_sql(self):
-        return "%s OFFSET %d " % (self.find.to_sql(), self.count)
+        return "%s OFFSET %d " % (self.obj.to_sql(), self.count)
     
 
 class Sort(object, ExtractSql):
-    def __init__(self, find, condition):
-        self.find = find
+    def __init__(self, obj, condition):
+        self.obj = obj
         self.condition = condition
     def limit(self, count):
         return Limit(self, count)
@@ -284,7 +309,7 @@ class Sort(object, ExtractSql):
             else:
                 sort_fmt_list.append('{} DESC'.format(key))
         sort_fmt = ','.join(sort_fmt_list)
-        return "%s ORDER BY %s" % (self.find.to_sql(), sort_fmt)
+        return "%s ORDER BY %s" % (self.obj.to_sql(), sort_fmt)
     
 
 if __name__ == "__main__":
