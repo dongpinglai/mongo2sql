@@ -118,7 +118,7 @@ def handle_condition(condition):
                     elif k == '$eq':
                         d_fmt.append('{0}={1}'.format(field, v))
                     elif k == "$in":
-                        d_fmt.append('{0} IN ({1})'.format(field, str(tuple(v))))
+                        d_fmt.append('{0} IN {1}'.format(field, str(tuple(v))))
                     
 
                     else:
@@ -373,7 +373,7 @@ if __name__ == "__main__":
     obj_list.append(db.pet.save({"name": 1, "age": 28, "_id": 100}))
 
     obj_list.append(db.pet.save({"name": 1, "age": 28}))
-    
+    obj_list.append(db.pet.find({"age": {"$in": [12, 25, 29]}})) 
     for obj in obj_list:
         print obj.to_sql()
     
