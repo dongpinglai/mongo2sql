@@ -1,7 +1,21 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+
+
 import MySQLdb
 
+
+#class Switch(object):
+ #   def __enter__(self):
+  #      return self
+
+   # def __exit__(self, type, val, trace):
+    #    del self
+
+L_SWITCH = 1
+S_SWITCH = 1
+
+        
 configure = {"hostname": "localhost", "username": "root", "password": "lai", "database": "test" }    
 
 def connect(hostname, username, password, database, port=3306):
@@ -47,10 +61,6 @@ class Db(dict, ExtractSql):
             return Table(self, attr)
 
             
-
-            
-    
-
     
 class Table(object, ExtractSql):
     def __init__(self, db, name):
@@ -69,7 +79,7 @@ class Table(object, ExtractSql):
     def update(self, condition, operation):
         return Update(self, condition, operation)
 
-    def save(self, doc, write_concern):
+    def save(self, doc, write_concern=None):
         return Save(self, doc, write_concern)
 
     def __getattr__(self, attr):
@@ -128,15 +138,17 @@ def handle_condition(condition):
         return fmt
         
 
-class Save(object, ExtractSql, Insert):
-    def __init__(self, table, doc, write_concern):
+class Save(object, ExtractSql):
+    def __init__(self, table, doc, write_concern=None):
         self.table = table
         self.doc = doc
         self.write_concern = write_concern
 
     def to_sql(self):
+        doc = self.doc.copy()
         if '_id' in self.doc.keys():
-            return Update(self.table, {"_id": self.doc["_id"]}, self.doc).to_sql()
+            id = doc.pop('_id')
+            return Update(self.table, {"_id": id}, doc).to_sql()
         return Insert(self.table, self.doc).to_sql()
 
 class Insert(object, ExtractSql):
@@ -201,19 +213,17 @@ class Update(object, ExtractSql):
     def handle_operation(self):
         operation_fmt_list = []
         operation_fmt = ''
-        for op, obj in self.operation.items():
-            field = obj.keys()[0]
-            value = obj.values()[0]                
+        for op, val in self.operation.items():
             if op == '$set':
-                operation_fmt = 'set {0}={1}'.format(field, value)
+                operation_fmt = 'set {0}={1}'.format(val.keys()[0], val.values()[0])
             elif op == '$inc':
-                operation_fmt = 'set {0}={0}+{1}'.format(field, value)
+                operation_fmt = 'set {0}={0}+{1}'.format(val.keys()[0], val.values()[0])
             elif op == '$unset':
-                operation_fmt = 'alter table {0} drop {1}'.format(self.table.name, field)
+                operation_fmt = 'alter table {0} drop {1}'.format(self.table.name, val.keys()[0])
             elif op == '$push':
-                operation_fmt = 'alter table {0} add {1}, set {2}={3}'.format(self.table.name, field, field, value)
+                operation_fmt = 'alter table {0} add {1}, set {2}={3}'.format(self.table.name, val.keys()[0], val.keys()[0], val.values()[0])
             else:
-                operation_fmt = 'set {0}={1}'.format(field, value)
+                operation_fmt = 'set {0}={1}'.format(op, val)
             operation_fmt_list.append(operation_fmt)
         if len(operation_fmt_list) == 1:
             return operation_fmt_list[0]
@@ -224,13 +234,19 @@ class Update(object, ExtractSql):
         operation  = self.handle_operation()
         if operation == "":
             raise ValueError('The secend parameter can\'t be \'{}\'')
+        if condition == '':
+            return "UPDATE %s %s " % (self.table.name, operation)
         return "UPDATE %s %s WHERE %s" % (self.table.name, operation, condition)
         
+
 class Find(object, ExtractSql):
+    """Find doc string """
+    
     def __init__(self, table, condition=None, field=None):
         self.table = table
         self.field = field
         self.condition = condition
+
     def handle_field(self):
         proj_fmt_list = []
         if self.field == {} or self.field is None:
@@ -244,7 +260,6 @@ class Find(object, ExtractSql):
         return proj_fmt
 
     def to_sql(self):
-
         condition = handle_condition(self.condition) 
         field = self.handle_field()
         if field != '':
@@ -257,16 +272,27 @@ class Find(object, ExtractSql):
             return "SELECT %s FROM %s " % ("*", self.table.name)
     
     def limit(self, count):
-        return Limit(self, count)
+        global L_SWITCH
+        if L_SWITCH:
+            L_SWITCH = 0
+            return Limit(self, count)
+        else:
+            raise AttributeError('too many limit')
         
     def skip(self, count):
-        return Skip(self, count)
+        global S_SWITCH
+        if S_SWITCH:
+            S_SWITCH = 0
+            return Skip(self, count)
+        else:
+            raise AttributeError('too many skip')
 
     def sort(self, condition):
         return Sort(self, condition)
 
     def __getattr__(self, attr):
         pass 
+
         
 class Limit(object, ExtractSql):
     def __init__(self, obj, count):
@@ -274,10 +300,16 @@ class Limit(object, ExtractSql):
         self.count = count
 
     def skip(self, count):
-        return Skip(self, count)
+        global S_SWITCH
+        if S_SWITCH:
+            S_SWITCH = 0
+            return Skip(self, count)
+        else:
+            raise AttributeError('too many skip')
 
     def to_sql(self):
         return "%s LIMIT %d" % (self.obj.to_sql(), self.count)
+
 
 class Skip(object, ExtractSql):
     def __init__(self, obj, count):
@@ -285,21 +317,37 @@ class Skip(object, ExtractSql):
         self.count = count
 
     def limit(self, count):
-        return Limit(self, count)
+        global L_SWITCH
+        if L_SWITCH:
+            L_SWITCH = 0
+            return Limit(self, count)
+        else:
+            raise AttributeError("too many limit")
 
     def to_sql(self):
         return "%s OFFSET %d " % (self.obj.to_sql(), self.count)
     
+
 
 class Sort(object, ExtractSql):
     def __init__(self, obj, condition):
         self.obj = obj
         self.condition = condition
     def limit(self, count):
-        return Limit(self, count)
+        global L_SWITCH
+        if L_SWITCH:
+            L_SWITCH = 0
+            return Limit(self, count)
+        else:
+            raise AttributeError("too many limit")
 
     def skip(self, count):
-        return Skip(self, count)
+        global S_SWITCH
+        if S_SWITCH:
+            S_SWITCH = 0
+            return Skip(self, count)
+        else:
+            raise AttributeError("too many skip ")        
         
     def to_sql(self):
         sort_fmt_list = []
@@ -314,8 +362,18 @@ class Sort(object, ExtractSql):
 
 if __name__ == "__main__":
     db = Db('test')
-    for result in db.pet.find().sort({"name": 1}).limit(10).skip(1):
-        print result
+    #for result in db.pet.find().sort({"name": 1}).limit(10).skip(1):
+        #print result
+    obj_list = []
+    obj_list.append(db.pet.find().sort({"name": 1}).limit(8).skip(1))
+    #obj_list.append(db.pet.find().sort({"name": 1}).limit(9).skip(1).limit(8))  # 多个limit or skip 
+    obj_list.append(db.pet.remove({"name": "Slim"}))
+    obj_list.append(db.pet.update({},{"$set": {"name": 'dd'}}))
+    #obj_list.append(db.pet.update({}, {}))
+    obj_list.append(db.pet.save({"name": 1, "age": 28, "_id": 100}))
+
+    obj_list.append(db.pet.save({"name": 1, "age": 28}))
     
-    count = db.pet.remove({"name": "Slim"}).execute()
-    print count
+    for obj in obj_list:
+        print obj.to_sql()
+    
