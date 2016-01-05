@@ -85,7 +85,9 @@ class Table(object, ExtractSql):
     def __getattr__(self, attr):
         pass
 
-        
+    def aggregate(self, *args, option=None):
+        return Aggregate(self, *args, option)
+
 def handle_condition(condition):
         """a condition dict -> a sql format string """
         fmt = []
@@ -359,6 +361,68 @@ class Sort(object, ExtractSql):
         sort_fmt = ','.join(sort_fmt_list)
         return "%s ORDER BY %s" % (self.obj.to_sql(), sort_fmt)
     
+def handle_group(adict):
+    pass
+
+def handle_project(adict):
+    pass
+
+def handle_sort(adict):
+    pass
+
+def handle_limit(count):
+    pass
+
+def handle_sum(exp):
+    pass
+
+class Aggregate(object, ExtractSql):
+    def __init__(self, *args, option=None):
+        self.args = args
+        self.option = option
+
+    def handle_match(self):
+        for arg in self.args:
+            if arg.keys()[0] == '$match':
+                condition_fmt = handle_conditon(arg.values()[0])
+                return condition_fmt
+
+    def handle_group(self):
+        for arg in self.args:
+            if arg.keys()[0] == '$group':
+                group_fmt = handle_group(arg.values()[0])
+                return group_fmt
+
+    def handle_project(self):
+        for arg in self.args:
+            if arg.keys()[0] == '$project':
+                project_fmt = handle_project(arg.values()[0])
+                return project_fmt
+                
+    def handle_sort(self):
+        for arg in self.args:
+            if arg.keys()[0] == '$sort':
+                sort_fmt = handle_sort(arg.values()[0])
+                return sort_fmt
+    def handle_limit(self):
+        for arg in self.args:
+            if arg.keys()[0] == '$limit':
+                limit_fmt = handle_limit(arg.values()[0])
+                return limit_fmt
+    def handle_sum(self):
+        for arg in self.args:
+            if arg.keys()[0] == '$sum':
+                sum_fmt = handle_sum(arg.values()[0])
+                return sum_fmt
+    def handle_unwind(self):
+        for arg in self.args:
+            if arg.keys()[0] == '$unwind':
+                unwind_fmt = handle_unwind(arg.values()[0])
+                return unwind_fmt
+    def to_sql(self):
+        pass
+
+
 
 if __name__ == "__main__":
     db = Db('test')
