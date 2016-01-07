@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import os
 import threading
 import MySQLdb
 
@@ -42,12 +43,14 @@ class ExtractSql:
         print sql
         count = cursor.execute(sql)
         return count
+
         
+DATABASE_METHODS = ["createDatabase", "dropDatabase", 'cloneCollection', 'cloneDatabase', 'commandHelp', 'copyDatabase', 'createCollection', 'currentOp', 'eval', 'fsyncLock', 'fsyncUnlock', 'getCollection', 'getCollectionInfos', 'getCollectionNames', 'getLastError', 'getLastErrorObj', 'getLogComponents', 'getMongo', 'getName', 'getPrevError', 'getProfilingLevel', 'getProfilingStatus', 'getReplicationInfo', 'getSiblingDB', 'help', 'hostInfo', 'isMaster', 'killOp', 'listCommands', 'loadServerScripts', 'logout', 'printCollectionStatus', 'printReplicationInfo', 'printShardingStatus', 'printSlaveReplicationInfo', 'repairDatabase', 'resetError', 'runCommand', 'serverBuildInfo', 'serverCmdLineOpts', 'serverStatus', 'setLogLevel', 'setProfilingLevel', 'shutdownServer', 'stats', 'version', 'upgradeCheck', 'upgradeCheckAllDBs']
+
+
 
 class Db(dict, ExtractSql):
-
     """Docstring for Db. """
-
     def __init__(self, name):
         self.name = name
     def createDatabase(self):
@@ -57,11 +60,91 @@ class Db(dict, ExtractSql):
         return "DROP DATABSE {}".format(self.name)
         
     def __getattr__(self, attr):
-        if attr not in ["createDatabase", "dropDatabase"]:
+        if attr not in DATABASE_METHODS:
             return Table(self, attr)
 
-            
+    def cloneCollection(self,from_host, from_coll, query=None):
+        """
+        e.g:
+        db.cloneCollection('mongodb.example.net:27017', 'users.profiles', {'active': 'true'}) -->从服务器mongodb.example.net:27017的users数据库的profiles集合中复制条件满足{' active': 'true'}的文档到当前的数据库集合中。
+        """
+        return CloneCollection(self, from_host, from_coll, query)
     
+    def copyDatabase(self, from_db, to_db, from_host=None, username=None, password=None, mechanisum=None):
+        return CopyDatabase(self, from_db, to_db, from_host, username, password, mechanisum)
+
+    def createCollection(self, name, options=None):
+        return CreateCollection(self, name, options)
+
+    
+
+
+
+
+class CloneCollection(object, ExtractSql):
+    def __init__(self, db, from_host, from_coll, query=None):
+        self.db = db
+        self.from_host = from_host
+        self.from_coll = from_coll
+        self.query = query
+
+    def to_sql(self):
+        if '.' in self.from_coll:
+            old_table_name = self.from_coll.split('.')[-1]
+        else:
+            old_table_name = self.from_coll
+        new_table_name = self.db.old_table_name.name
+        if self.query:
+            where_fmt = 'WHERE ' + handle_condition(self.query)
+        else:
+            where_fmt = ''
+        return 'SELECT * INTO %s FROM %s %s' % (new_table_name, old_table_name, where_fmt)
+        
+
+class CopyDatabase(object, ExtractSql):
+
+    def __init__(self, db, from_db, to_db, from_host=None, username=None, password=None, mechanisum=None):
+        self.db = db
+        self.from_db = from_db
+        self.to_db = to_db
+        self.from_host = from_host
+        self.username= username
+        self.password = password
+        self.mechanisum = mechanisum
+        
+    def to_sql(self):
+        #sql = 'CREATE DATABASE %s' % self.to_db
+        if self.from_host not None and self.username not None and self.password not None:
+            dump_sql = 'mysqldump -h %s -u %s -p%s %s > %s' % (self.from_host, self.username, self.password, self.from_db, '%s.sql'.format(self.from_db))
+        else:
+            dump_sql = 'mysqldump %s > %s' % (self.from_db, '%s.sql'.format(self.from_db))
+            
+        
+        import_sql = 'mysqlimport %s %s' % (self.to_db,'%s.sql'.format(self.from_db ))
+        try:
+            os.system(dump_sql)
+            os.system(import_sql)
+        except:
+            raise ValueError('input host, username, password')
+        else:
+            return 'USE %s' % self.to_db
+
+
+class CreateCollection(object, ExtractSql):
+    def __init__(self, db, table_name, options=None):
+        self.db = db
+        self.table_name = table_name
+        self.options = options
+
+    def to_sql(self):
+        sql_list = []
+        sql_list.append('USE %s' % self.db.name)
+        sql_list.append('CREATE TABLE %s (%s)' % (self.table_name, )) #字段和字段类型的来源
+        sql = ';'.join(sql_list)
+        return sql
+
+
+
 class Table(object, ExtractSql):
     def __init__(self, db, name):
         self.db = db
@@ -111,6 +194,30 @@ class Table(object, ExtractSql):
 
     def findOne(self, query, projection):
         return FindOne(self, query, projection)
+
+    def group(self, doc):
+        return Group(self, doc)
+
+    def mapReduce(self, map_func, reduce_func, doc):
+        return MapReduce(self, map_func, reduce_func, doc)
+
+    def replaceOne(self, query, rep, option=None):
+        return ReplaceOne(self, query, rep,option)
+
+    def renameCollection(self, new_name, option=None):
+        return RenameCollection(self, new_name, option=None)
+
+    def stats(self, scale=None, option=None):
+        return Stats(self, scale, option)
+
+    def storageSize(self):
+        return StorageSize(self)
+
+    def totalSize(self):
+        return TotalSize(self)
+
+    def totalIndexSize(self):
+        return TotalIndexSize(self)
 
 
 def handle_condition(condition):
@@ -385,7 +492,12 @@ class Sort(object, ExtractSql):
                 sort_fmt_list.append('{} ASC'.format(key))
             else:
                 sort_fmt_list.append('{} DESC'.format(key))
-        sort_fmt = ','.join(sort_fmt_list)
+        if len(sort_fmt_list) == 0：
+            return ''
+        elif len(sort_fmt_list) == 1:
+            sort_fmt = sort_fmt_list[0]
+        else:
+            sort_fmt = ','.join(sort_fmt_list)
         return "%s ORDER BY %s" % (self.obj.to_sql(), sort_fmt)
     
 
@@ -598,6 +710,10 @@ class FindAndModify(Find, Update, Remove):
         
 
     def to_sql(self):
+        global L_SWITCH
+        global S_SWITCH
+        S_SWITCH = 1
+        L_SWITCH = 1
         fields_value = self.doc.get('fields', None)
         query_value = self.doc.get('query', None)
         update_value = self.doc.get('update', None)
@@ -653,7 +769,156 @@ class FindOne(Find, ExtractSql):
         super(FindOne, self).__init__(self.table, self.query, self.projection)
 
     def to_sql(self):
+        global L_SWITCH
+        L_SWITCH = 1
         return super(FindOne, self).limit(1).to_sql()
+
+
+class Group(object, ExtractSql):
+    """键keyf, reduce, fnalize 对应值为function，以及键initial是对reduce的操作等未实现
+    """
+    def __init__(self, table, doc):
+        self.table = table
+        self.doc = doc
+
+    def handle_key(self):
+        group_fmt_list = []
+        proj_fmt_list = []
+        for key, val in self.key.items():
+            if val == 1:
+                proj_fmt_list.append(key)
+                group_fmt_list.append('%s ASC' % key)
+            else:
+                proj_fmt_list.append(key)
+                group_fmt_list.append('%s DESC' % key)
+        if len(proj_fmt_list) == 0:
+            return ''
+        elif len(proj_fmt_list) == 1:
+            proj_fmt = proj_fmt_list[0]
+        else:
+            proj_fmt = ','.join(proj_fmt_list)
+
+        if len(group_fmt_list) == 0:
+            return ''
+        elif len(group_list_list) == 1:
+            group_fmt = 'GROUP BY ' + group_fmt_list[0]
+        else:
+            group_fmt = 'GROUP BY' + ' '.join(group_fmt_list)
+        return proj_fmt, group_fmt
+        
+    def to_sql(self):
+        proj_fmt_list = []
+        option_fmt_list = []
+        where_fmt = handle_condition(self.doc['cond'])
+        proj_fmt, group_fmt = self.handle_key()
+        if where_fmt:
+            option_fmt_list.append('WHERE ' + where_fmt)
+        proj_fmt_list.append(proj_fmt)
+        option_fmt_list.append(group_fmt)
+        if len(proj_fmt_list) == 0:
+            proj_fmt = '*'
+        else len(proj_fmt_list) == 1:
+            proj_fmt = proj_fmt_list[0]
+        else:
+            proj_fmt = ','.join(proj_fmt_list)
+            
+        if len(option_fmt_list) == 1:
+            option_fmt = option_fmt_list[0]
+        elif len(option_fmt_list) == 0:
+            option_fmt = ''
+        else:
+            option_fmt = ' '.join(option_fmt_list)
+        return 'SELECT %s FROM %s %s' % (proj_fmt, self.table.name, option_fmt)
+
+
+class MapReduce(object, ExtractSql):
+    def __init__(self, table, map_func, reduce_func, doc):
+        self.table = table
+        self.map_func = map_func
+        self.reduce_func = reduce_func
+        self.doc = doc
+    
+
+    def to_sql(self):
+        raise ValueError('uncompleted')
+    
+    
+class ReplaceOne(object, ExtractSql):
+    def __init__(self, table, query, rep, option=None):
+        self.table = table
+        self.query = query
+        self.rep = rep
+        self.option = option
+
+    def to_sql(self):
+        raise ValueError('uncompleted')
+
+
+class RenameCollection(object, ExtractSql):
+    def __init__(self, table, new_name, option=None):
+        self.table = table
+        self.new_name = self.new_name
+        self.option = option
+
+    def to_sql(self):
+        return 'ALTER TABLE %s RENAME TO %s' % (self.table.name, self.new_name)
+
+        
+class Stats(object, ExtractSql):
+    def __init__(self, table, scale=None, option=None):
+        self.table = table
+        self.scale = scale
+        self.option = option
+
+    def to_sql(self):
+        table_name = 'information_schema.STATISTICS'
+        return 'SELECT * FROM %s WHERE TABLE_NAME="%s"' % (table_name, self.table.name)
+
+
+class StorageSize(object, ExtractSql):
+    def __init__(self, table):
+        self.table = table
+
+    def to_sql(self):
+        table_name = 'information_schema.TABLES'
+        return 'SELECT DATE_LENGTH AS  storagesize FROM %s WHERE TABLE_NAME="%s" ' % (table_name, self.table.name)
+
+
+class totalSize(object, ExtractSql):
+    def __init__(self, table):
+        self.table = table
+
+    def to_sql(self):
+        table_name = 'information_schema.TABLES'
+        return 'SELECT DATA_LENGTH + INDEX_LENGTH AS totalsize FROM %s WHERE TABLE_NAME="%s"' % (table_name, self.table.name)
+
+
+class TotalIndexSize(object, ExtractSql):
+    def __init__(self, table):
+        self.table = table
+
+    def to_sql(self):
+        table_name = 'information_schema.TABLES'
+        return 'SELECT INDEX_LENGTH AS totalIndexSize FROM %s WHERE TABLE_NAME = "%s"' % (table_name, self.table.name)
+
+
+class Validate(object, ExtractSql):
+    def __init__(self, table, full=False):
+        self.table = table
+        self.full = full
+
+    def to_sql(self):
+        if self.full:
+            table_name = 'information_schema.STATISTICS, information_schema.TABLES'
+            
+        else:
+            table_name = 'information_schema.TABLES'
+        return 'SELECT * FROM %s WHERE TABLE_NAME="%s"' % (table_name, self.table.name)
+        
+
+
+
+
 
 
 if __name__ == "__main__":
