@@ -54,10 +54,10 @@ class Db(dict, ExtractSql):
     def __init__(self, name):
         self.name = name
     def createDatabase(self):
-        return "CREATE DATABSE {}".format(self.name)
+        return CreateDatabase(self)
         
     def dropDatabase(self):
-        return "DROP DATABSE {}".format(self.name)
+        return DropDatabase(self)
         
     def __getattr__(self, attr):
         if attr not in DATABASE_METHODS:
@@ -74,11 +74,128 @@ class Db(dict, ExtractSql):
         return CopyDatabase(self, from_db, to_db, from_host, username, password, mechanisum)
 
     def createCollection(self, name, options=None):
-        return CreateCollection(self, name, options)
+        raise ValueError('unsupported')
+        #return CreateCollection(self, name, options)
 
     
+    def currentOp(self, operatoins=None):
+        return CurrentOp(self, operations)
+
+    def eval(self, func, arguments):
+        return Eval(self, func, arguments)
+
+    def fsyncLock(self):
+        raise ValueError('unsupported')
+
+    def fsyncUnlock(self):
+        raise ValueError('unsupported')
+
+    def getCollection(self, name):
+        return GetCollection(self, name)
+
+    def getCollectionInfos(self):
+        return GetColletionInfos(self)
+
+    def getCollectionNames(self):
+        return GetCollectionNames(self)
+
+    def getLastError(self, w_c=None, w_timeout=None):
+        raise ValueError('unsupported')
+        #return GetLastError(self, w_c, w_timeout)
+
+    def getLastErrorObj(self, key=None, w_timeout=None):
+        raise ValueError('unsupported')
+        #return GetLastErrorObj(self, key, w_timeout)
+
+    def getLogComponents(self):
+        return GetLogComponents(self)
+
+    def getMongo(self):
+        return GetMongo(self)
+
+    def getName(self):
+        return GetName(self)
+
+    def getPrevError(self):
+        return GetPrevError(self)
+
+    def getProfilingLevel(self):
+        return GetProfilingLevel(self)
+
+    def getProfilingStatus(self):
+        return GetProfilingStatus(self)
+
+    def getReplicationInfo(self):
+        raise ValueError('unsupported')
+        #return GetReplicationInfo(self)
+
+    def getSiblingDB(self, database):
+        return GetSiblingDB(self, database) 
+
+    def help(self):
+        return Help(self)
+
+    def hostInfo(self):
+        return HostInfo(self)
+
+    def isMaster(self):
+        raise ValueError('unsupported')
+        #return IsMaster(self)
+
+    def killOp(self, opid):
+        return KillOp(self, opid)
+
+    def listCommands(self):
+        return ListCommands(self)
+
+    def loadServerScripts(self):
+        raise ValueError('unsupported')
+        #return LoadServerScripts(self)
+
+    def logout(self):
+        return Logout(self)
+
+    def printCollectionStatus(self):
+        return PrintCollectionStatus(self)
+
+    def printReplicationInfo(self):
+        raise ValueError('unsupported')
+        #return PrintReplicationInfo(self)
+
+    def printShardingStatus(self, verbose=False):
+        raise ValueError('unsupported')
+        #return PrintShardingStatus(self, verbose)
+
+    def printSlaveReplicationInfo(self):
+        raise ValueError('unsupported')
+        #return PrintSlaveReplicationStatus(self)
+
+    def repairDatabase(self):
+        raise ValueError('unsupported')
+        #return RepairDatabase(self)
+
+    def resetError(self):
+        return ResetError(self)
+
+    def runCommand(self, command):
+        return RunCommand(self, command)
+        
 
 
+class CreateDatabase(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return 'CREATE DATABASE %s' % self.db.name
+
+
+class DropDatabase(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self, db):
+        return 'DROP DATABASE %s' % self.db.name
 
 
 class CloneCollection(object, ExtractSql):
@@ -113,7 +230,6 @@ class CopyDatabase(object, ExtractSql):
         self.mechanisum = mechanisum
         
     def to_sql(self):
-        #sql = 'CREATE DATABASE %s' % self.to_db
         if self.from_host not None and self.username not None and self.password not None:
             dump_sql = 'mysqldump -h %s -u %s -p%s %s > %s' % (self.from_host, self.username, self.password, self.from_db, '%s.sql'.format(self.from_db))
         else:
@@ -136,13 +252,271 @@ class CreateCollection(object, ExtractSql):
         self.table_name = table_name
         self.options = options
 
+
+    def handle_fields(self):
+        fields_fmt_list = []
+        if isinstance(self.options, dict) and self.options != {}:
+            for key, val in self.options.items():
+                pass
+                
+            
+        else:
+            raise ValueError('The second parameter must be a dict and not {}')
+        if len(fields_fmt_list) == 1:
+            fields_fmt = fields_fmt_list[0]
+        elif len(fields_fmt_list) == 0:
+            return ''
+        else:
+            fields_fmt = ','.join(fields_fmt_list)
+        return "(%s)" % fields_fmt
+
+
     def to_sql(self):
         sql_list = []
         sql_list.append('USE %s' % self.db.name)
-        sql_list.append('CREATE TABLE %s (%s)' % (self.table_name, )) #字段和字段类型的来源
+        fileds_fmt = self.handle_fields(self.options)
+        sql_list.append('CREATE TABLE %s %s' % (self.table_name, fileds_fmt)) #字段和字段类型的来源
         sql = ';'.join(sql_list)
         return sql
 
+
+class CurrentOp(object, ExtractSql):
+    def __init__(self, db, operations=None):
+        self.db = db
+        self.operations = operations
+
+    def to_sql(self):
+        talbe_name = 'information_schema.PROCESSLIST'
+        if operations:
+            if operations = True:
+                where_fmt = 'WHERE ' + 'DB=%s' % self.db.name
+                return 'SELECT * FROM %s %s ' % (table_name, where_fmt)
+            #elif isinstance(operations, dict):
+             #   where_fmt = 'WHERE' 
+              #  return 'SELECT * FROM %s %s' % (table_name, where_fmt) 
+        else:
+            where_fmt = 'WHERE ' + 'DB=%s' % self.db.name
+            return 'SELECT * FROM %s %s' % (table_name, where_fmt)
+
+
+class Eval(object, ExtractSql):
+    def __init__(self, db, func, arguments):
+        self.db = db
+        self.func = func
+        self.arguments = arguments
+
+    def to_sql(self):
+        raise ValueError('unsupported')
+
+class fsynLock(object, ExtractSql):
+    pass
+
+class fsynUnlock(object, ExtractSql):
+    pass
+    
+class GetCollection(object, ExtractSql):
+    def __init__(self, db, name):
+        self.db = db
+        self.name
+
+    def to_sql(self):
+        table_name = 'information_schema.TABLES'
+        where_fmt = 'WHERE ' + 'TABLE_SCHEMA=%s TABLE_NAME=%s' % (self.db.name, self.name)
+        return 'SELECT TABLE_NAME FROM %s %s' % (table_name, where_fmt)
+
+
+class GetCollectionInfos(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        table_name = 'information_schema.TABLES'
+        where_fmt = 'WHERE ' + 'TABLE_SCHEMA=%s' % self.db.name
+        return 'SELECT * FROM %s %s' % (table_name, where_fmt)
+
+
+class GetCollectionNames(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        table_name = 'information_schema.TABLES'
+        where_fmt = 'WHERE ' + 'TABLE_SCHEMA=%s' % self.db.name
+        return 'SELECT TABLE_NAME FROM %s %s' % (table_name, where_fmt)
+
+
+class GetLastError(object, ExtractSql):
+    pass
+
+
+class GetLastErrorObj(object, ExtractSql):
+    pass
+
+
+class GetLogComponents(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return '%s; %s' % ('USE %s' % self.db.name, 'SHOW status')
+
+
+class GetMongo(object, ExtractSql):
+    def __init__(self,db):
+        self.db = db
+
+    def to_sql(self):
+        return 'SHOW PROCESSLIST'
+
+    
+class GetName(object, Extractsql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return 'SELECT database()'
+
+
+class GetPrevError(self):
+    def __init__(self):
+        self.db = db
+
+    def to_sql(self):
+        return 'SHOW ERRORS LIMIT 1'
+    
+
+class GetProfilingLevel(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return 'SHOW PROFILES'
+
+        
+class GetProfilingStatus(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+        self.get_profiling_level = GetProfilingLevel(self.db)
+
+    def to_sql(self):
+        return self.get_profiling_level.to_sql()
+    
+
+class GetReplicationInfo(object, ExtractSql):
+    pass
+
+
+class GetSiblingDB(object, ExtractSql):
+    def __init__(self, db, database):
+        self.db = db
+        self.database = database
+
+    def to_sql(self):
+        return 'USE %s' % self.database
+
+        
+class Help(object, ExtractSql):
+    def __init__(self, obj):
+        self.obj = obj
+
+    def to_sql(self):
+        return 'help'
+
+
+class HostInfo(object, ExtracstSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        table_name = 'information_schema.STATISTICS, information_schema.PROCESSLIST'
+        where_fmt = 'information_schema.STATISTICS.TABLE_SCHEMA=%s AND information.PROCESSLIST.DB=%s' % (self.db.name, self.db.name)
+        return 'SELECT * FORM %s %s' % (table_name, where_fmt)
+
+    
+class IsMaster(object, ExtractSql):
+    pass
+            
+
+
+class KillOp(object, ExtractSql):
+    def __init__(self, db, opid):
+        self.db = db
+        self.opid = opid
+
+    def to_sql(self):
+        return 'SHOW PROCESSLIST; KILL %s' % self.opid
+
+
+class ListCommands(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return Help(self.db).to_sql()
+
+
+class LoadServerScripts(object, ExtractSql):
+    pass
+
+
+class Logout(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return 'DROP DATABASE %s' % (self.db.name)
+
+
+class PrintCollectionStatus(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        table_name = 'information_schema.STATISTICS'
+        where_fmt = 'TABLE_SCHEMA=%s' % self.db.name
+        return 'SELECT * FORM %s %s' % (table_name, where_fmt)
+
+    
+class PrintReplicationInfo(object, ExtractSql):
+    pass
+
+
+class PrintShardingStatus(object, ExtractSql):
+    pass
+
+    
+class PrintSlaveReplicationStatus(object, ExtractSql):
+    pass
+
+class RepairDatabase(object, ExtractSql):
+    pass
+
+
+class ResetError(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return GetPrevError(self.db).to_sql()
+
+    
+class RunCommand(object, ExtractSql):
+    def __init__(self, db, command):
+        self.db = db
+        self.command = command
+
+    def to_sql(self):
+        commands = ['createColletion']
+        if isinstance(self.command, str):
+            pass
+        elif isinstance(self.command, dict):
+            kwargs = self.command.remove(commands###to be continued
+            self.db.self.command.values()[0].self.command.keys()[0](**kwargs)
+ 
+
+        
+
+        
 
 
 class Table(object, ExtractSql):
