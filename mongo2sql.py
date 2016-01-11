@@ -230,7 +230,7 @@ class CopyDatabase(object, ExtractSql):
         self.mechanisum = mechanisum
         
     def to_sql(self):
-        if self.from_host not None and self.username not None and self.password not None:
+        if self.from_host is not None and self.username is not None and self.password is not None:
             dump_sql = 'mysqldump -h %s -u %s -p%s %s > %s' % (self.from_host, self.username, self.password, self.from_db, '%s.sql'.format(self.from_db))
         else:
             dump_sql = 'mysqldump %s > %s' % (self.from_db, '%s.sql'.format(self.from_db))
@@ -288,7 +288,7 @@ class CurrentOp(object, ExtractSql):
     def to_sql(self):
         talbe_name = 'information_schema.PROCESSLIST'
         if operations:
-            if operations = True:
+            if operations == True:
                 where_fmt = 'WHERE ' + 'DB=%s' % self.db.name
                 return 'SELECT * FROM %s %s ' % (table_name, where_fmt)
             #elif isinstance(operations, dict):
@@ -369,7 +369,7 @@ class GetMongo(object, ExtractSql):
         return 'SHOW PROCESSLIST'
 
     
-class GetName(object, Extractsql):
+class GetName(object, ExtractSql):
     def __init__(self, db):
         self.db = db
 
@@ -377,7 +377,7 @@ class GetName(object, Extractsql):
         return 'SELECT database()'
 
 
-class GetPrevError(self):
+class GetPrevError(object, ExtractSql):
     def __init__(self):
         self.db = db
 
@@ -423,7 +423,7 @@ class Help(object, ExtractSql):
         return 'help'
 
 
-class HostInfo(object, ExtracstSql):
+class HostInfo(object, ExtractSql):
     def __init__(self, db):
         self.db = db
 
@@ -510,14 +510,9 @@ class RunCommand(object, ExtractSql):
         if isinstance(self.command, str):
             pass
         elif isinstance(self.command, dict):
-            kwargs = self.command.remove(commands###to be continued
-            self.db.self.command.values()[0].self.command.keys()[0](**kwargs)
- 
-
-        
-
-        
-
+            pass
+       
+                                    
 
 class Table(object, ExtractSql):
     def __init__(self, db, name):
@@ -527,13 +522,13 @@ class Table(object, ExtractSql):
     def find(self, condition=None, field=None):
         return Find(self, condition, field)
 
-    def insert(self, doc):
+    def insert(self, doc, w_c=None, orders=None):
         return Insert(self, doc)
 
-    def remove(self, condition=None):
+    def remove(self, condition=None, options=None):
         return Remove(self, condition)
 
-    def update(self, condition, operation):
+    def update(self, condition, operation, options=None):
         return Update(self, condition, operation)
 
     def save(self, doc, write_concern=None):
@@ -547,18 +542,40 @@ class Table(object, ExtractSql):
 
     def count(self, query=None):
         return Count(self, query)
+    
+    def copyTo(self, new_collection):
+        return CopyTo(self, new_collection)
+
+    def dataSize(self):
+        return DataSize(table)
+
+    def deleteOne(self, query, w_c=None):
+        return DeleteOne(self, query, w_c)
+
+    def deleteMany(self, query,w_c=None):
+        return DeleteMany(self, query, w_c)
+
 
     def createIndex(self,keys, options=None):
         return CreateIndex(self, keys, options)
 
+    def dataSize(self):
+        return DataSize(self)
+
     def dropIndex(self,index):
         return DropIndex(self, index)
 
+    def dropIndexes(self):
+        return DropIndexes(self)
+
+    def ensureIndex(self, keys, options):
+        return EnsureIndex(self, keys, options)
+
+    def explain(self, verbosity='queryPlanner'):
+        return Explain(self, verbosity)
+
     def findAndModify(self,doc):
         return FindAndModify(self, doc)
-
-    def deleteOne(self, query):
-        return DeleteOne(self, query)
 
     def dropCollection(self):
         return DropColletion(self)
@@ -569,8 +586,37 @@ class Table(object, ExtractSql):
     def findOne(self, query, projection):
         return FindOne(self, query, projection)
 
+    def findOneAndDelete(self, query, options=None):
+        return FindOneAndDelete(self, query, options)
+
+    def findOneAndReplace(self, query, replacement, options):
+        return FindOneAndReplacement(self, query, replacement, options)
+
+    def findOneAndUpdate(self, query, update, options=None):
+        return FindAndUpdate(self, query, update, options)
+
+    def getIndexes(self):
+        return GetIndexes(self)
+
+    def getShardDistribution(self):
+        raise ValueError('unsupported')
+        #return GetShardDistribution(self)
+
+    def getShardDistribution(self):
+        raise ValueError('unsupported')
+        #return GetShardDistribution(self)
+
     def group(self, doc):
         return Group(self, doc)
+
+    def insertOne(self, doc, options=None):
+        return InsertOne(self, doc, options)
+
+    def insertMany(self, docs, options=None):
+        return InsertMany(self, docs, options=None)
+
+    def isCapped(self):
+        return IsCapped(self)
 
     def mapReduce(self, map_func, reduce_func, doc):
         return MapReduce(self, map_func, reduce_func, doc)
@@ -636,6 +682,9 @@ def handle_condition(condition):
                 else:
                     d_fmt = ' and '.join(d_fmt)
                 fmt.append(d_fmt)
+            elif isinstance(value, tuple):
+                fmt.append('%s %s' % (field, value[0]))
+                
             else:
                 fmt.append('{0}={1}'.format(field, value))
 
@@ -661,9 +710,11 @@ class Save(object, ExtractSql):
 
 class Insert(object, ExtractSql):
     """ Insert doc string"""
-    def __init__(self, table, doc):
+    def __init__(self, table, doc, w_c=None, orders=None):
         self.table = table
         self.doc = doc
+        self.w_c = w_c
+        self.orders = orders
 
     def handle_doc(self):
         """ list or dict -> format string """
@@ -699,23 +750,24 @@ class Insert(object, ExtractSql):
         
 
 class Remove(object, ExtractSql):
-    def __init__(self, table, condition=None):
+    def __init__(self, table, condition=None, options=None):
         self.table = table
         self.condition = condition
+        self.options = options
 
     def to_sql(self):
         condition = handle_condition(self.condition)
         if condition == '':
-            return "Drop table %s" % self.table.name
+            return "DELETE FROM table %s" % self.table.name
         return "DELETE FROM %s WHERE %s" % (self.table.name, condition)
         
 
 class Update(object, ExtractSql):
-    def __init__(self, table, condition, operation, option=None):
+    def __init__(self, table, condition, operation, options=None):
         self.table = table
         self.condition = condition
         self.operation = operation
-        self.option = option
+        self.options = options
 
     def handle_operation(self):
         operation_fmt_list = []
@@ -866,7 +918,7 @@ class Sort(object, ExtractSql):
                 sort_fmt_list.append('{} ASC'.format(key))
             else:
                 sort_fmt_list.append('{} DESC'.format(key))
-        if len(sort_fmt_list) == 0：
+        if len(sort_fmt_list) == 0:
             return ''
         elif len(sort_fmt_list) == 1:
             sort_fmt = sort_fmt_list[0]
@@ -1039,6 +1091,57 @@ class Count(object, ExtractSql):
         proj_fmt = 'count(*)'
         return 'SELECT %s FROM %s %s' % (proj_fmt, self.table.name, condition_fmt)
 
+
+class CopyTo(object, ExtractSql):
+    def __init__(self, table, new_collection):
+        self.table = table
+        self.new_collection = new_collection
+
+    def to_sql(self):
+        return 'SELECT * INTO %s FROM %s' (self.new_collection, self.table.name)
+
+
+
+class DataSize(object, ExtractSql):
+    def __init__(self, table):
+        self.table = table
+
+    def to_sql(self):
+        return 'SELECT * FROM %s %s' % (table_name, where_fmt)
+
+
+class DataSize(object, ExtractSql):
+    def __init__(self, table):
+        self.table = table
+
+    def to_sql(self):
+        table_name = 'information_schema.TABLES'
+        proj_fmt = 'DATA_LENGTH, INDEXT_LENGTH'
+        where_fmt = 'TABLE_NAME=%s' % self.table.name
+        return 'SELECT %s FROM %s %s' % (proj_fmt, table_name, where_fmt)
+
+
+
+class DeleteOne(object, ExtractSql):
+    def __init__(self, table, query, w_c=None):
+        self.table = table
+        self.query = query
+        self.w_c = w_c
+
+    def to_sql(self):
+        return '%s LIMIT 1' % Remove(self.table, self.query).to_sql() 
+
+
+class DeleteMany(object, ExtractSql):
+    def __init__(self, table, query, w_c=None):
+        self.table = table
+        self.query = query
+        self.w_c = w_c
+
+    def to_sql(self):
+        return Remove(self.table, self.query).to_sql()
+
+
 class CreateIndex(object, ExtractSql):
     def __init__(self, table, keys, option=None):
         self.table = table
@@ -1077,43 +1180,64 @@ class DropIndex(object, ExtractSql):
         return 'DROP INDEX %s ON %s' % (index_name, table_name)
 
 
-class FindAndModify(Find, Update, Remove):
+class DropIndexes(object, ExtractSql):
+    def __init__(self, table):
+        self.table = table
+
+    def to_sql(self):
+        raise ValueError('unsupported')#一次性删除！
+
+
+class EnsureIndex(object, ExtractSql):
+    def __init__(self, table, keys, options):
+        self.create_index = CreateIndex(table, keys, options)
+
+    def to_sql(self):
+        return self.create_index.to_sql()
+
+
+class Explain(object, ExtractSql):
+    def __init(self, table, verbosity='queryPlanner'):
+        raise ValueError('unsupported')
+
+
+class FindAndModify(object, ExtractSql):
     def __init__(self, table, doc):
         self.table = table
         self.doc = doc
-        
 
     def to_sql(self):
-        global L_SWITCH
-        global S_SWITCH
-        S_SWITCH = 1
-        L_SWITCH = 1
         fields_value = self.doc.get('fields', None)
         query_value = self.doc.get('query', None)
         update_value = self.doc.get('update', None)
         remove_value = self.doc.get('remove', False)
         sort_value = self.doc.get('sort', None)
-        obj = Find(self.table, query_value, fields_value).limit(1)
+        new_value = self.doc.get('new', False)
+        upsert_value = self.doc.get('upsert', False)
+        bypassDocVal_value = self.doct.get('bypassDocumentValidation', None)
         if sort_value:
-            obj = Find(self.table, query_value, fields_value).sort(sort_value).limit(1)
-            pass
-
-        if update_value:
-            obj = Update(self.table, query_value, update_value)
+            orginal_sql = Find(self.table, query_value, fields_value).sort(sort_value).limit(1)
+        else:
+            original_sql = Find(self.table, query_value, fields_value).limit(1).to_sql()
+        if update_value and remove_value:
+            raise ValueError("'update','remove'不能同时出现")
+        elif update_value:
+            update_sql = Upddate(self.table, query_value, update_value)
+            if new_value:
+                sql = update_sql + ';' + original_sql
+            else:
+                sql = original_sql + ';' + update_sql
+            #upsert 暂不支持
+            #if upsert_value:
+             #   insert_sql = Insert(self.table, 
+             #   sql = original_sql + ';' + insert_sql 
+           # else:
+            #    sql = original_sql + ';' + update_sql
         elif remove_value:
-            obj = Find(self.table, query_value, fields_value).sort(sort_value).limit(1)
-            pass
-        return obj.to_sql()
-
-class DeleteOne(Remove, ExtractSql):
-    def __init__(self, table, query):
-        self.table = table
-        self.query = query
-        super(DeleteOne, self).__init__(self.table, self.query)
-        
-    def to_sql(self):
-        sql = super(DeleteOne, self).to_sql()
+            remove_sql = Remove(self.table, query_value)
+            sql = original_sql + ';' + remove_sql
         return sql
+
         
 class DropCollection(object, ExtractSql):
     def __init__(self, table):
@@ -1147,6 +1271,144 @@ class FindOne(Find, ExtractSql):
         L_SWITCH = 1
         return super(FindOne, self).limit(1).to_sql()
 
+
+class FindOneAndDelete(object, ExtractSql):
+    def __init__(self, table, query, options=None):
+        self.table= table
+        self.query = query
+        self.options = options
+
+    def handle_sort(self):
+        sort_fmt_list = []
+        sort_value = self.options.get('sort', None)
+        if sort_value:
+            for key, val in sort_value.items():
+                if val == 1:
+                    sort_fmt_list.append('%s ASC' % key)
+                else:
+                    sort_fmt_list.append('%s DESC' % key)
+        if len(sort_fmt_list) == 0:
+            sort_fmt = ''
+        elif len(sort_fmt_list) == 1:
+            sort_fmt = 'ORDER BY %s' % sort_fmt_list[0]
+        else:
+            sort_fmt = 'ORDER BY %s' % ','.join(sort_fmt_list)
+        return sort_fmt
+
+    def to_sql(self):
+        import time
+        start = time.time()
+        table = self.table
+        query = self.options.get('filter', None)
+        projections = self.options.get('projection', None)
+        sort_value = self.options.get('sort', None)
+        max_time = self.options.get('maxTimeMs', None)
+        
+        if sort:
+            original_sql = Find(table, query, projections).sort(sort_value).limit(1).to_sql()
+            sort_fmt = self.handle_sort()
+            delete_sql = '%s %s LIMIT 1' % (Remove(self.table, query), sort_fmt)
+        else:
+            original_sql = Find(table, query, projections).limit(1).to_sql()
+            delete_sql = '%s LIMIT 1' % Remove(self.table, query)
+        sql = original_sql + ';' + delete_sql
+        return sql
+
+
+class FindOneAndReplace(object, ExtractSql):
+    def __init__(self, table, query, replacement, options=None):
+        self.table= table
+        self.query = query
+        self.replacement = replacement
+        self.options = options
+
+    def to_sql(self):
+        projection = self.options.get(projection, None)
+        sort_value = self.options.get(sort, None)
+        max_time = self.options.get('maxTimeMS', None)
+        upsert = self.options.get('upsert', False)
+        return_new = self.options.get('returnNewDocument', False)
+        
+        if sort_value:
+            original_sql = Find(self.table, self.query,projection).sort(sort_value).limit(1).to_sql()
+        else:
+            original_sql = Find(self.table, self.query, projection).limit(1).to_sql()
+        
+        update_sql = Update(self.table, self.query, self.replacement).to_sql()
+        
+        if return_new:
+            sql = update_sql + ';' + original_sql
+        else:
+            sql = original_sql + ';' + update_sql
+        #upsert暂不支持,可用子查询实现，待完成。XXXAndxxx之类的类也可以实现
+        return sql
+
+class FindoneAndUpdate(object, ExtractSql):
+    def __init__(self, table, query, update, options):
+        self.table = table
+        self.query = query
+        self.update = update
+        self.options = options
+
+    def to_sql(self):
+        if self.option.get('sort'):
+            sub_selection = Find(self.table, self.query, self.options.get('projection', None)).sort(self.options.get('sort', None)).limit(1).to_sql()
+        else:
+            sub_selection = Find(self.table, self.query, self.options.get('projection', None)).limit(1).to_sql()
+        update_sql = Update(self.table, {'exists': (sub_selection,)}, self.update)
+        if self.options.get('returnNewDocument'):
+            sql = update_sql + ';' + sub_selection
+        else:
+            sql = sub_selection
+
+        return sql
+
+        
+class GetIndexes(object, ExtractSql):
+    def __init__(self, table):
+        self.table = table
+
+    def to_sql(self):
+        return 'SHOW INDEX FORM %s' % self.table.name
+
+
+class GetShardDistribution(object, ExtractSql):
+    pass
+
+
+class GetShardVersion(object, ExtractSql):
+    pass
+
+
+class InsertOne(object, ExtractSql):
+    def __init__(self, table, doc, options=None):
+        self.table = table
+        self.doc = doc
+        self.options = options
+
+    def to_sql(self):
+        return Insert(self.table, self.doc, self.options).to_sql()
+
+
+class InsertMany(object, ExtractSql):
+    def __init__(self, table, docs, options=None):
+        self.table = table
+        self.docs = docs
+        self.options = options
+
+    def to_sql(self):
+        return Insert(self.table, self.docs, self.options).to_sql()
+
+
+class IsCapped(object, ExtractSql):
+    def __init__(self, table):
+        self.table = table
+
+    def to_sql(self):
+        table_name = 'information_schema'
+        where_fmt = 'TABLE_SCHMA=%s' % self.table.name
+        return 'SELECT TABLE_TYPE FORM %s %s' % (table_name, where_fmt)
+        
 
 class Group(object, ExtractSql):
     """键keyf, reduce, fnalize 对应值为function，以及键initial是对reduce的操作等未实现
@@ -1191,7 +1453,7 @@ class Group(object, ExtractSql):
         option_fmt_list.append(group_fmt)
         if len(proj_fmt_list) == 0:
             proj_fmt = '*'
-        else len(proj_fmt_list) == 1:
+        elif len(proj_fmt_list) == 1:
             proj_fmt = proj_fmt_list[0]
         else:
             proj_fmt = ','.join(proj_fmt_list)
