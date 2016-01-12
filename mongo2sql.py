@@ -6,13 +6,6 @@ import threading
 import MySQLdb
 
 
-#class Switch(object):
- #   def __enter__(self):
-  #      return self
-
-   # def __exit__(self, type, val, trace):
-    #    del self
-
 L_SWITCH = 1
 S_SWITCH = 1
 
@@ -26,6 +19,7 @@ def connect(hostname, username, password, database, port=3306):
 
 cursor = connect(**configure)
 
+###Base class################
 class ExtractSql:
 
     def __init__(self, obj):
@@ -48,7 +42,7 @@ class ExtractSql:
 DATABASE_METHODS = ["createDatabase", "dropDatabase", 'cloneCollection', 'cloneDatabase', 'commandHelp', 'copyDatabase', 'createCollection', 'currentOp', 'eval', 'fsyncLock', 'fsyncUnlock', 'getCollection', 'getCollectionInfos', 'getCollectionNames', 'getLastError', 'getLastErrorObj', 'getLogComponents', 'getMongo', 'getName', 'getPrevError', 'getProfilingLevel', 'getProfilingStatus', 'getReplicationInfo', 'getSiblingDB', 'help', 'hostInfo', 'isMaster', 'killOp', 'listCommands', 'loadServerScripts', 'logout', 'printCollectionStatus', 'printReplicationInfo', 'printShardingStatus', 'printSlaveReplicationInfo', 'repairDatabase', 'resetError', 'runCommand', 'serverBuildInfo', 'serverCmdLineOpts', 'serverStatus', 'setLogLevel', 'setProfilingLevel', 'shutdownServer', 'stats', 'version', 'upgradeCheck', 'upgradeCheckAllDBs']
 
 
-
+###classes for Database and database's methods####
 class Db(dict, ExtractSql):
     """Docstring for Db. """
     def __init__(self, name):
@@ -511,8 +505,9 @@ class RunCommand(object, ExtractSql):
             pass
         elif isinstance(self.command, dict):
             pass
+
        
-                                    
+###classes for collection and collection methods#####                                    
 
 class Table(object, ExtractSql):
     def __init__(self, db, name):
@@ -554,7 +549,6 @@ class Table(object, ExtractSql):
 
     def deleteMany(self, query,w_c=None):
         return DeleteMany(self, query, w_c)
-
 
     def createIndex(self,keys, options=None):
         return CreateIndex(self, keys, options)
@@ -621,6 +615,9 @@ class Table(object, ExtractSql):
     def mapReduce(self, map_func, reduce_func, doc):
         return MapReduce(self, map_func, reduce_func, doc)
 
+    def reIndex(self):
+        return ReIndex(self)
+
     def replaceOne(self, query, rep, option=None):
         return ReplaceOne(self, query, rep,option)
 
@@ -639,7 +636,13 @@ class Table(object, ExtractSql):
     def totalIndexSize(self):
         return TotalIndexSize(self)
 
+    def updateOne(self, query, update, options=None):
+        return Update(self, query, update, options)
 
+    def updateMany(self, query, update, options=None):
+        return updateMany(self, query, update, options)
+
+        
 def handle_condition(condition):
         """a condition dict -> a sql format string """
         fmt = []
@@ -1477,7 +1480,15 @@ class MapReduce(object, ExtractSql):
 
     def to_sql(self):
         raise ValueError('uncompleted')
-    
+
+
+class ReIndex(object, ExtractSql):
+    def __init__(self, table):
+        self.table = table
+
+    def to_sql(self):
+        return "REPAIR TABLE %s QUICK" % self.table.name
+            
     
 class ReplaceOne(object, ExtractSql):
     def __init__(self, table, query, rep, option=None):
@@ -1487,7 +1498,8 @@ class ReplaceOne(object, ExtractSql):
         self.option = option
 
     def to_sql(self):
-        raise ValueError('uncompleted')
+        sub_selection = Find(self.table, self.query).limit(1).to_sql()
+        return Update(self.table, {'exists': (sub_selection,)}, self.rep, self.option)
 
 
 class RenameCollection(object, ExtractSql):
@@ -1508,7 +1520,8 @@ class Stats(object, ExtractSql):
 
     def to_sql(self):
         table_name = 'information_schema.STATISTICS'
-        return 'SELECT * FROM %s WHERE TABLE_NAME="%s"' % (table_name, self.table.name)
+        where_fmt = 'TABLE_NAME="%s"' % self.table.name
+        return 'SELECT * FROM %s %s' % (table_name, where_fmt)
 
 
 class StorageSize(object, ExtractSql):
@@ -1550,7 +1563,30 @@ class Validate(object, ExtractSql):
         else:
             table_name = 'information_schema.TABLES'
         return 'SELECT * FROM %s WHERE TABLE_NAME="%s"' % (table_name, self.table.name)
-        
+
+
+class UpdateOne(object, ExtractSql):
+    def __init__(self, table, query, update, options=None):
+        self.table = table
+        self.query = query
+        self.update = update
+        self.options = options
+
+    def to_sql(self):
+        return ReplaceOne(self.table, self.query, self.update, self.options).to_sql()
+
+
+class UpdateMany(object, ExtractSql):
+    def __init__(self, table, query, update, options=None):
+        self.table = table
+        self.query = query
+        self.update = update
+        self.options = options
+
+    def to_sql(self):
+        return Update(self.table, self.query, self.update, self.options).to_sql()
+    
+
 
 
 
