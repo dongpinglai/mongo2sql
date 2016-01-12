@@ -68,7 +68,7 @@ class Db(dict, ExtractSql):
         return CopyDatabase(self, from_db, to_db, from_host, username, password, mechanisum)
 
     def createCollection(self, name, options=None):
-        raise ValueError('unsupported')
+        raise ValueError('createCollection unsupported')
         #return CreateCollection(self, name, options)
 
     
@@ -79,26 +79,26 @@ class Db(dict, ExtractSql):
         return Eval(self, func, arguments)
 
     def fsyncLock(self):
-        raise ValueError('unsupported')
+        raise ValueError('fsyncLock unsupported')
 
     def fsyncUnlock(self):
-        raise ValueError('unsupported')
+        raise ValueError('fsyncUnlock unsupported')
 
     def getCollection(self, name):
         return GetCollection(self, name)
 
     def getCollectionInfos(self):
-        return GetColletionInfos(self)
+        return GetCollectionInfos(self)
 
     def getCollectionNames(self):
         return GetCollectionNames(self)
 
     def getLastError(self, w_c=None, w_timeout=None):
-        raise ValueError('unsupported')
+        raise ValueError('getLastError unsupported')
         #return GetLastError(self, w_c, w_timeout)
 
     def getLastErrorObj(self, key=None, w_timeout=None):
-        raise ValueError('unsupported')
+        raise ValueError('getLastErrorObj unsupported')
         #return GetLastErrorObj(self, key, w_timeout)
 
     def getLogComponents(self):
@@ -133,7 +133,7 @@ class Db(dict, ExtractSql):
         return HostInfo(self)
 
     def isMaster(self):
-        raise ValueError('unsupported')
+        raise ValueError('isMaster unsupported')
         #return IsMaster(self)
 
     def killOp(self, opid):
@@ -143,7 +143,7 @@ class Db(dict, ExtractSql):
         return ListCommands(self)
 
     def loadServerScripts(self):
-        raise ValueError('unsupported')
+        raise ValueError('loadServerScripts unsupported')
         #return LoadServerScripts(self)
 
     def logout(self):
@@ -153,19 +153,19 @@ class Db(dict, ExtractSql):
         return PrintCollectionStatus(self)
 
     def printReplicationInfo(self):
-        raise ValueError('unsupported')
+        raise ValueError('printReplicationInfo unsupported')
         #return PrintReplicationInfo(self)
 
     def printShardingStatus(self, verbose=False):
-        raise ValueError('unsupported')
+        raise ValueError('printShardingStatus unsupported')
         #return PrintShardingStatus(self, verbose)
 
     def printSlaveReplicationInfo(self):
-        raise ValueError('unsupported')
+        raise ValueError('printSlaveReplicationInfo unsupported')
         #return PrintSlaveReplicationStatus(self)
 
     def repairDatabase(self):
-        raise ValueError('unsupported')
+        raise ValueError('repairDatabase unsupported')
         #return RepairDatabase(self)
 
     def resetError(self):
@@ -188,7 +188,7 @@ class DropDatabase(object, ExtractSql):
     def __init__(self, db):
         self.db = db
 
-    def to_sql(self, db):
+    def to_sql(self):
         return 'DROP DATABASE %s' % self.db.name
 
 
@@ -300,7 +300,7 @@ class Eval(object, ExtractSql):
         self.arguments = arguments
 
     def to_sql(self):
-        raise ValueError('unsupported')
+        raise ValueError('Eval unsupported')
 
 class fsynLock(object, ExtractSql):
     pass
@@ -311,7 +311,7 @@ class fsynUnlock(object, ExtractSql):
 class GetCollection(object, ExtractSql):
     def __init__(self, db, name):
         self.db = db
-        self.name
+        self.name = name 
 
     def to_sql(self):
         table_name = 'information_schema.TABLES'
@@ -356,7 +356,7 @@ class GetLogComponents(object, ExtractSql):
 
 
 class GetMongo(object, ExtractSql):
-    def __init__(self,db):
+    def __init__(self, db):
         self.db = db
 
     def to_sql(self):
@@ -593,11 +593,11 @@ class Table(object, ExtractSql):
         return GetIndexes(self)
 
     def getShardDistribution(self):
-        raise ValueError('unsupported')
+        raise ValueError('getShardDistribution unsupported')
         #return GetShardDistribution(self)
 
-    def getShardDistribution(self):
-        raise ValueError('unsupported')
+    def getShardVersion(self):
+        raise ValueError('getShardVersion unsupported')
         #return GetShardDistribution(self)
 
     def group(self, doc):
@@ -1188,7 +1188,9 @@ class DropIndexes(object, ExtractSql):
         self.table = table
 
     def to_sql(self):
-        raise ValueError('unsupported')#一次性删除！
+        table_name = 'information_schema.STATISTICS'
+        where_fmt = 'TABLE_SCHEMA=%s AND TABLE_NAME="%s"' % (self.table.db.name, self.table.name)
+        return "DELETE FORM %s %s" % (table_name, where_fmt)
 
 
 class EnsureIndex(object, ExtractSql):
@@ -1200,9 +1202,11 @@ class EnsureIndex(object, ExtractSql):
 
 
 class Explain(object, ExtractSql):
-    def __init(self, table, verbosity='queryPlanner'):
-        raise ValueError('unsupported')
+    def __init__(self, table, verbosity='queryPlanner'):
+        raise ValueError('Explain unsupported')
 
+    def to_sql(self):
+        pass
 
 class FindAndModify(object, ExtractSql):
     def __init__(self, table, doc):
@@ -1479,7 +1483,7 @@ class MapReduce(object, ExtractSql):
     
 
     def to_sql(self):
-        raise ValueError('uncompleted')
+        raise ValueError('MapReduce uncompleted')
 
 
 class ReIndex(object, ExtractSql):
@@ -1620,6 +1624,7 @@ if __name__ == "__main__":
     obj_list.append(db.test.count({'name': 11}))
     obj_list.append(db.test.createIndex({'age': 1, 'owner': -1}))
     
+    
     #obj_list.append(db.test.findAndModify({'query': {'name': 'andy'}, 'sort': {'rating': 1}, 'update': {'$inc': {'score': 1}}, 'upsert': 'true'})) # find找到的记录如何返回，以便modify修改，并且只对一个记录进行增、删、改的sql语句的写法。
 
 
@@ -1627,3 +1632,6 @@ if __name__ == "__main__":
     for obj in obj_list:
         print obj.to_sql()
     
+    import test
+    t = test.Test()
+    t.main()
