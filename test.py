@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-###
+###TODO: 增加db.coll.bulkwrite() 测试
 
 import random
 import mongo2sql

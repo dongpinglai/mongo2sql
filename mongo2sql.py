@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-##
+##TODO:db.runCommand()等未实现功能, 修补bug
 
 
 import os
@@ -767,9 +767,8 @@ class Table(object, ExtractSql):
     def updateMany(self, query, update, options=None):
         return UpdateMany(self, query, update, options)
 
-    def bulkWrite(self, operations, w_c=None, ordered=None):
-        raise ValueError('bulkWrite unsupported')
-        # return BulkWrite(self, operations, w_c, ordered)
+    def bulkWrite(self, operations,options=None):
+        return BulkWrite(self, operations, options)
 
     def drop(self):
         return Drop(self)
@@ -786,8 +785,51 @@ class Drop(object, ExtractSql):
         return 'DROP TABLE %s' % self.table.name
 
 class BulkWrite(object, ExtractSql):
-    pass
+    def __init__(self, table, operations, options):
+        self.table = table
+        self.operations = operations
+        self.options = options
 
+    def to_sql(self):
+        operation_fmt_list = []
+        for operation in self.operations:
+            if operation.keys()[0] == 'insertOne':
+                doc = operation.values()[0].get('documnet', None)
+                insert_one_fmt = InsertOne(self.table, doc).to_sql()
+                operation_fmt_list.append(insert_one_fmt)
+            elif operation.keys()[0] == 'updateOne':
+                query = operation.values()[0].get('filter', None)
+                update = operation.values()[0].get('update', None)
+                upsert = operation.values()[0].get('upsert', False)
+                update_one_fmt = UpdateOne(self.table, query, update)
+                operation_fmt_list.append(update_one_fmt)
+            elif operation.keys()[0] == 'updateMany':
+                query = operation.values()[0].get('filter', None)
+                update = operation.values()[0].get('update', None)
+                upsert = operation.values()[0].get('upsert', False)
+                update_many_fmt = UpdateMany(self.table, query, update)
+                operation_fmt_list.append(update_many_fmt)
+            elif operation.keys()[0] == 'replaceOne':
+                query = operation.values()[0].get('filter', None)
+                replace = operation.values()[0].get('replacement', None)
+                upsert = operation.values()[0].get('upsert', False)
+                replace_one_fmt = UpdateOne(self.table, query, replace)
+                operation_fmt_list.append(replace_one_fmt)
+            elif operation.keys()[0] == 'deleteOne':
+                query = operation.values()[0].get('filter', None)
+                delete_one_fmt = DeleteOne(self.table, query)
+                operation_fmt_list.append(delete_one_fmt)
+            elif operation.keys()[0] == 'deleteMany':
+                query = operation.values[0].get('filter', None)
+                delete_many_fmt = DeleteMany(self.table, query)
+                operation_fmt_list.append(delete_many_fmt)
+            if len(operation_fmt_list) == 0:
+                operation_fmt = ''
+            elif len(operation_fmt_list) == 1:
+                operation_fmt = operation_fmt_list[0]
+            else:
+                operation_fmt = ';'.join(operation_fmt_list)
+            return operation_fmt
 
         
 def handle_condition(condition):
