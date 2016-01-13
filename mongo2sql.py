@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+##
+
 
 import os
 import threading
@@ -57,6 +59,9 @@ class Db(dict, ExtractSql):
         if attr not in DATABASE_METHODS:
             return Table(self, attr)
 
+    def cloneDatabase(self, host_name):
+        return CloneDatabase(self, host_name)
+
     def cloneCollection(self,from_host, from_coll, query=None):
         """
         e.g:
@@ -76,7 +81,8 @@ class Db(dict, ExtractSql):
         return CurrentOp(self, operations)
 
     def eval(self, func, arguments):
-        return Eval(self, func, arguments)
+        raise ValueError('eval unsupported')
+        #return Eval(self, func, arguments)
 
     def fsyncLock(self):
         raise ValueError('fsyncLock unsupported')
@@ -120,7 +126,7 @@ class Db(dict, ExtractSql):
         return GetProfilingStatus(self)
 
     def getReplicationInfo(self):
-        raise ValueError('unsupported')
+        raise ValueError('getReplicationInfo unsupported')
         #return GetReplicationInfo(self)
 
     def getSiblingDB(self, database):
@@ -165,16 +171,137 @@ class Db(dict, ExtractSql):
         #return PrintSlaveReplicationStatus(self)
 
     def repairDatabase(self):
-        raise ValueError('repairDatabase unsupported')
-        #return RepairDatabase(self)
-
+        return RepairDatabase(self)
+    
     def resetError(self):
         return ResetError(self)
 
     def runCommand(self, command):
-        return RunCommand(self, command)
+        raise ValueError('runCommand unsupported')
+        #return RunCommand(self, command)
+
+    def serverBuildInfo(self):
+        raise ValueError('serverBuildInfo unsupported')
+        #return ServerBuildInfo(self)
+
+    def serverCmdLineOpts(self):
+        raise ValueError('serverCmdBuildInfo unsupported')
+        # return GetCmdLineOpts(self)
+
+    def serverStatus(self):
+        return ServerStatus(self)
+
+    def setProfilingLevel(self, level=None, slowms=None):
+        return SetProfilingLevel(self, level, slowms)
+
+    def shutdownServer(self):
+        return ShutdownServer(self)
+
+        
+    def setLogLevel(self, level=None, component=None):
+        raise ValueError('setLogLevel unsupported')
+        #return SetLogLevel(self, level, component)
+
+
+    def stats(self, scale=None):
+        return Stats(self, scale)
+
+    def version(self):
+        return Version(self)
+
+    def upgradeCheck(self, scope=None):
+        raise ValueError('upgradeCheck unsupported')
+        #return UpgradeCheck(self, scope)
+
+    def upgradeCheckAllDBs(self):
+        raise ValueError('upgradeCheckAllDBs unsupported')
+        # return UpgradeCheckAllDBs(self)
+
+
+class CloneDatabase(object, ExtractSql):
+    def __init__(self, db, host_name):
+        self.db = db
+        self.host_name = host_name
+
+    def to_sql(self):
+        r_user_name = raw_input('remote_mysql_username: \n')
+        r_password = raw_input('remote_mysql_password: \n')
+        l_user_name = raw_input('localhost_user_name: \n')
+        l_password = raw_input('localhost_password: \n')
+        if r_user_name and r_password and l_user_name and l_password:
+            r_mysql_dump = 'mysqldump -h %s -u %s -p%s %s > %s.sql' % (self.host_name, r_user_name, r_password, self.db.name, self.db.name)
+            l_mysql_import = 'mysql -h localhost -u %s -p%s < %s.sql' % (l_user_name, l_password, self.db.name)
+            os.system('&&'.join([r_mysql_dump, l_mysql_import]))
+            return 'OK'
+        else:
+            ValueError('To CloneDatabase, input infos')
+                             
+        
+        
+class UpgradeCheck(object, ExtractSql):
+    pass
+
+
+class UpgradeCheckAllDBs(object, ExtractSql):
+    pass
+
+class Version(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return 'SELECT VERSION()'
+
+        
+class Stats(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        table_name = 'information_schema.PROCESSLIST'
+        where_fmt = 'WHERE' + 'DB=%s' % self.db.name
+        return 'SELECT * FROM %s %s' % (table_name, where_fmt)
+
+
+class ShutdownServer(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return os.system('service mysql stop')
+
+
+class SetProfilingLevel(object, ExtractSql):
+    def __init__(self, db, level, slowms=None):
+        self.db = db
+        self.level = level
+        self.slowms = None
+
+    def to_sql(self):
+        return 'SET PROFILING = 1'
         
 
+        
+class ServerStatus(object, ExtractSql):
+    def  __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return 'SHOW STATUS'
+
+
+class ServerBuildInfo(object, ExtractSql):
+    pass
+    
+
+class ServerCmdLineOpts(object, ExtractSql):
+    pass
+
+
+class SetLogLevel(object, ExtractSql):
+    pass
+
+    
 
 class CreateDatabase(object, ExtractSql):
     def __init__(self, db):
@@ -213,7 +340,6 @@ class CloneCollection(object, ExtractSql):
         
 
 class CopyDatabase(object, ExtractSql):
-
     def __init__(self, db, from_db, to_db, from_host=None, username=None, password=None, mechanisum=None):
         self.db = db
         self.from_db = from_db
@@ -226,26 +352,21 @@ class CopyDatabase(object, ExtractSql):
     def to_sql(self):
         if self.from_host is not None and self.username is not None and self.password is not None:
             dump_sql = 'mysqldump -h %s -u %s -p%s %s > %s' % (self.from_host, self.username, self.password, self.from_db, '%s.sql'.format(self.from_db))
+            l_host = raw_input('to_mysql_hostname:')
+            l_user = raw_input('to_mysql_user:')
+            l_password = raw_input('to_mysql_password:')
+            import_sql = 'mysql -h %s -u %s -p%s < %s.sql' % (l_host, l_user, l_password, self.from_db)
+            os.system('&&'.join([dump_sql, import_sql]))
+            return 'OK'
         else:
-            dump_sql = 'mysqldump %s > %s' % (self.from_db, '%s.sql'.format(self.from_db))
-            
+            raise ValueError('To CopyDatabase, input host, username, password')
         
-        import_sql = 'mysqlimport %s %s' % (self.to_db,'%s.sql'.format(self.from_db ))
-        try:
-            os.system(dump_sql)
-            os.system(import_sql)
-        except:
-            raise ValueError('input host, username, password')
-        else:
-            return 'USE %s' % self.to_db
-
 
 class CreateCollection(object, ExtractSql):
     def __init__(self, db, table_name, options=None):
         self.db = db
         self.table_name = table_name
         self.options = options
-
 
     def handle_fields(self):
         fields_fmt_list = []
@@ -315,7 +436,7 @@ class GetCollection(object, ExtractSql):
 
     def to_sql(self):
         table_name = 'information_schema.TABLES'
-        where_fmt = 'WHERE ' + 'TABLE_SCHEMA=%s TABLE_NAME=%s' % (self.db.name, self.name)
+        where_fmt = 'WHERE ' + 'TABLE_SCHEMA=%s AND TABLE_NAME=%s' % (self.db.name, self.name)
         return 'SELECT TABLE_NAME FROM %s %s' % (table_name, where_fmt)
 
 
@@ -372,7 +493,7 @@ class GetName(object, ExtractSql):
 
 
 class GetPrevError(object, ExtractSql):
-    def __init__(self):
+    def __init__(self, db):
         self.db = db
 
     def to_sql(self):
@@ -483,7 +604,11 @@ class PrintSlaveReplicationStatus(object, ExtractSql):
     pass
 
 class RepairDatabase(object, ExtractSql):
-    pass
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return 'USE %s' % self.db.name + ';' + 'REPAIR TABLE *'
 
 
 class ResetError(object, ExtractSql):
@@ -562,7 +687,7 @@ class Table(object, ExtractSql):
     def dropIndexes(self):
         return DropIndexes(self)
 
-    def ensureIndex(self, keys, options):
+    def ensureIndex(self, keys, options=None):
         return EnsureIndex(self, keys, options)
 
     def explain(self, verbosity='queryPlanner'):
@@ -583,11 +708,11 @@ class Table(object, ExtractSql):
     def findOneAndDelete(self, query, options=None):
         return FindOneAndDelete(self, query, options)
 
-    def findOneAndReplace(self, query, replacement, options):
-        return FindOneAndReplacement(self, query, replacement, options)
+    def findOneAndReplace(self, query, replacement, options=None):
+        return FindOneAndReplace(self, query, replacement, options)
 
     def findOneAndUpdate(self, query, update, options=None):
-        return FindAndUpdate(self, query, update, options)
+        return FindOneAndUpdate(self, query, update, options)
 
     def getIndexes(self):
         return GetIndexes(self)
@@ -640,7 +765,29 @@ class Table(object, ExtractSql):
         return Update(self, query, update, options)
 
     def updateMany(self, query, update, options=None):
-        return updateMany(self, query, update, options)
+        return UpdateMany(self, query, update, options)
+
+    def bulkWrite(self, operations, w_c=None, ordered=None):
+        raise ValueError('bulkWrite unsupported')
+        # return BulkWrite(self, operations, w_c, ordered)
+
+    def drop(self):
+        return Drop(self)
+
+    def validate(self, full=False):
+        return Validate(self)
+
+    
+class Drop(object, ExtractSql):
+    def __init__(self, table):
+        self.table = table
+
+    def to_sql(self):
+        return 'DROP TABLE %s' % self.table.name
+
+class BulkWrite(object, ExtractSql):
+    pass
+
 
         
 def handle_condition(condition):
@@ -798,7 +945,7 @@ class Update(object, ExtractSql):
         condition = handle_condition(self.condition)
         operation  = self.handle_operation()
         if operation == "":
-            raise ValueError('The secend parameter can\'t be \'{}\'')
+            raise ValueError('\'Update\' object The secend parameter can\'t be \'{}\'')
         if condition == '':
             return "UPDATE %s %s " % (self.table.name, operation)
         return "UPDATE %s %s WHERE %s" % (self.table.name, operation, condition)
@@ -1101,7 +1248,7 @@ class CopyTo(object, ExtractSql):
         self.new_collection = new_collection
 
     def to_sql(self):
-        return 'SELECT * INTO %s FROM %s' (self.new_collection, self.table.name)
+        return 'SELECT * INTO %s FROM %s' % (self.new_collection, self.table.name)
 
 
 
@@ -1194,7 +1341,7 @@ class DropIndexes(object, ExtractSql):
 
 
 class EnsureIndex(object, ExtractSql):
-    def __init__(self, table, keys, options):
+    def __init__(self, table, keys, options=None):
         self.create_index = CreateIndex(table, keys, options)
 
     def to_sql(self):
@@ -1221,15 +1368,16 @@ class FindAndModify(object, ExtractSql):
         sort_value = self.doc.get('sort', None)
         new_value = self.doc.get('new', False)
         upsert_value = self.doc.get('upsert', False)
-        bypassDocVal_value = self.doct.get('bypassDocumentValidation', None)
+        bypassDocVal_value = self.doc.get('bypassDocumentValidation', None)
         if sort_value:
-            orginal_sql = Find(self.table, query_value, fields_value).sort(sort_value).limit(1)
+            orginal_sql = '%s LIMIT 1' % Find(self.table, query_value, fields_value).sort(sort_value).to_sql()
         else:
-            original_sql = Find(self.table, query_value, fields_value).limit(1).to_sql()
+            original_sql = '%s LIMIT 1' % Find(self.table, query_value, fields_value).to_sql()
+        sql = ''
         if update_value and remove_value:
             raise ValueError("'update','remove'不能同时出现")
         elif update_value:
-            update_sql = Upddate(self.table, query_value, update_value)
+            update_sql = Update(self.table, query_value, update_value).to_sql()
             if new_value:
                 sql = update_sql + ';' + original_sql
             else:
@@ -1266,17 +1414,14 @@ class Distinct(object, ExtractSql):
         return 'SELECT DISTINCT %s FROM %s %s' % (self.field, self.table.name, query)
 
 
-class FindOne(Find, ExtractSql):
+class FindOne(object, ExtractSql):
     def __init__(self, table, query, projection):
         self.table = table
         self.query = query
         self.projection = projection
-        super(FindOne, self).__init__(self.table, self.query, self.projection)
-
+       
     def to_sql(self):
-        global L_SWITCH
-        L_SWITCH = 1
-        return super(FindOne, self).limit(1).to_sql()
+        return "%s LIMIT 1" % Find(self.table, self.query, self.projection).to_sql()
 
 
 class FindOneAndDelete(object, ExtractSql):
@@ -1304,20 +1449,24 @@ class FindOneAndDelete(object, ExtractSql):
 
     def to_sql(self):
         import time
-        start = time.time()
+        start = time.time()#为了支持outtime， 待实现
         table = self.table
-        query = self.options.get('filter', None)
-        projections = self.options.get('projection', None)
-        sort_value = self.options.get('sort', None)
-        max_time = self.options.get('maxTimeMs', None)
-        
-        if sort:
+        query = self.query
+        if self.options:
+            projections = self.options.get('projection', None)
+            sort_value = self.options.get('sort', None)
+            max_time = self.options.get('maxTimeMs', None)
+        else:
+            projections = {}
+            sort_value = {}
+            max_time = None
+        if sort_value:
             original_sql = Find(table, query, projections).sort(sort_value).limit(1).to_sql()
             sort_fmt = self.handle_sort()
-            delete_sql = '%s %s LIMIT 1' % (Remove(self.table, query), sort_fmt)
+            delete_sql = '%s %s LIMIT 1' % (Remove(self.table, query).to_sql(), sort_fmt)
         else:
-            original_sql = Find(table, query, projections).limit(1).to_sql()
-            delete_sql = '%s LIMIT 1' % Remove(self.table, query)
+            original_sql = '%s LIMIT 1' % Find(table, query, projections).to_sql()
+            delete_sql = '%s LIMIT 1' % Remove(self.table, query).to_sql()
         sql = original_sql + ';' + delete_sql
         return sql
 
@@ -1330,16 +1479,22 @@ class FindOneAndReplace(object, ExtractSql):
         self.options = options
 
     def to_sql(self):
-        projection = self.options.get(projection, None)
-        sort_value = self.options.get(sort, None)
-        max_time = self.options.get('maxTimeMS', None)
-        upsert = self.options.get('upsert', False)
-        return_new = self.options.get('returnNewDocument', False)
-        
-        if sort_value:
-            original_sql = Find(self.table, self.query,projection).sort(sort_value).limit(1).to_sql()
+        if self.options:
+            projection = self.options.get(projection, None)
+            sort_value = self.options.get(sort, None)
+            max_time = self.options.get('maxTimeMS', None)
+            upsert = self.options.get('upsert', False)
+            return_new = self.options.get('returnNewDocument', False)
         else:
-            original_sql = Find(self.table, self.query, projection).limit(1).to_sql()
+            projection = None
+            sort_value = None
+            max_time = None
+            upset = False
+            return_new = False
+        if sort_value:
+            original_sql = "%s LIMIT 1" % Find(self.table, self.query,projection).sort(sort_value).to_sql()
+        else:
+            original_sql = "%s LIMIT 1" % Find(self.table, self.query, projection).to_sql()
         
         update_sql = Update(self.table, self.query, self.replacement).to_sql()
         
@@ -1350,24 +1505,31 @@ class FindOneAndReplace(object, ExtractSql):
         #upsert暂不支持,可用子查询实现，待完成。XXXAndxxx之类的类也可以实现
         return sql
 
-class FindoneAndUpdate(object, ExtractSql):
-    def __init__(self, table, query, update, options):
+class FindOneAndUpdate(object, ExtractSql):
+    def __init__(self, table, query, update, options=None):
         self.table = table
         self.query = query
         self.update = update
         self.options = options
 
     def to_sql(self):
-        if self.option.get('sort'):
-            sub_selection = Find(self.table, self.query, self.options.get('projection', None)).sort(self.options.get('sort', None)).limit(1).to_sql()
+        if self.options:
+            sort_value = self.options.get('sort', None)
+            return_new = self.options.get('returnNewDocument', None)
+            projection = self.options.get('projection', None)
         else:
-            sub_selection = Find(self.table, self.query, self.options.get('projection', None)).limit(1).to_sql()
+            sort_value = None
+            return_new = None
+            projection = None
+        if sort_value:
+            sub_selection = "%s LIMIT 1" % Find(self.table, self.query, projection).sort(sort_value).to_sql()
+        else:
+            sub_selection = "%s LIMIT 1" % Find(self.table, self.query, projection).to_sql()
         update_sql = Update(self.table, {'exists': (sub_selection,)}, self.update)
-        if self.options.get('returnNewDocument'):
+        if return_new:
             sql = update_sql + ';' + sub_selection
         else:
             sql = sub_selection
-
         return sql
 
         
@@ -1502,14 +1664,14 @@ class ReplaceOne(object, ExtractSql):
         self.option = option
 
     def to_sql(self):
-        sub_selection = Find(self.table, self.query).limit(1).to_sql()
-        return Update(self.table, {'exists': (sub_selection,)}, self.rep, self.option)
+        sub_selection = "%s LIMIT 1" % Find(self.table, self.query).to_sql()
+        return Update(self.table, {'exists': (sub_selection,)}, self.rep, self.option).to_sql()
 
 
 class RenameCollection(object, ExtractSql):
     def __init__(self, table, new_name, option=None):
         self.table = table
-        self.new_name = self.new_name
+        self.new_name = new_name
         self.option = option
 
     def to_sql(self):
@@ -1537,7 +1699,7 @@ class StorageSize(object, ExtractSql):
         return 'SELECT DATE_LENGTH AS  storagesize FROM %s WHERE TABLE_NAME="%s" ' % (table_name, self.table.name)
 
 
-class totalSize(object, ExtractSql):
+class TotalSize(object, ExtractSql):
     def __init__(self, table):
         self.table = table
 
@@ -1593,45 +1755,7 @@ class UpdateMany(object, ExtractSql):
 
 
 
-
-
-
-
 if __name__ == "__main__":
-    db = Db('test')
-    #for result in db.pet.find().sort({"name": 1}).limit(10).skip(1):
-        #print result
-    obj_list = []
-    obj_list.append(db.pet.find().sort({"name": 1}).limit(8).skip(1))
-    #obj_list.append(db.pet.find().sort({"name": 1}).limit(9).skip(1).limit(8))  # 多个limit or skip 
-    obj_list.append(db.pet.remove({"name": "Slim"}))
-    obj_list.append(db.pet.update({},{"$set": {"name": 'dd', 'age': 14}}))
-    #obj_list.append(db.pet.update({}, {}))
-    obj_list.append(db.pet.save({"name": 1, "age": 28, "_id": 100}))
-
-    obj_list.append(db.pet.save({"name": 1, "age": 28}))
-    obj_list.append(db.pet.find({"age": {"$in": [12, 25, 29]}}))
-    obj_list.append(db.orders.aggregate([{"$group": {"_id": "null", "count": {"$sum": 1 }}},{'$sort': {'name':1, 'age': -1}}]))
-    obj_list.append(db.pet.aggregate([{'$match': {'name': 'dd'}},{'$limit': 1}, {'$skip': 6}]))
-    obj_list.append(db.pet.aggregate([{'$match': {'name': 'dd'}}, {'$project': {'name':{'lastname':1}, 'id': 0, 'myarray': ['$key', '$val']}}]))
-    obj_list.append(db.orders.aggregate( [{'$group': {'_id': {'cust_id': "$cust_id",'ord_date': {'month': { '$month': "$ord_date" },'day': { '$dayOfMonth':"$ord_date" },'year': { '$year': "$ord_date"}}}}}]))
-    obj_list.append(db.articles.aggregate([{'$match': {'$or':[{'score':{'$gt': 70, '$lt': 90}}, {'view': {'$gte': 1000}}]}}, {'$group': {'_id': 'null', 'count': {'$sum': 1}}}]))
-    obj_list.append(db.artcles.aggregate([{'$match': {'status':'A'}},{"$project": {'name': 'true'}}, {'$group': {'_id': {"cust_id": "$cust_id", 'order_data': {'month': 12} }, 'total': {'$sum': 1}}},{'$match': {'total': {'$gt': 250}}}]))
-    obj_list.append(db.artcles.aggregate([{'$match': {'status':'A'}},{'$group': {'_id': {"cust_id": "$cust_id", 'order_data': {'month': 12} }, 'total': {'$sum': 1}}},{'$match': {'total': {'$gt': 250}}}]))
-    obj_list.append( db.orders.aggregate( [{'$group': {'_id': {'cust_id': "$cust_id",'ord_date': {'month': { '$month': "$ord_date" },'day': { '$dayOfMonth':"$ord_date" },'year': { '$year': "$ord_date"}}}}}, {'$group':{'_id': 'null', 'count': {'$sum': 1}}}]))
-
-
-    obj_list.append(db.test.count({'name': 11}))
-    obj_list.append(db.test.createIndex({'age': 1, 'owner': -1}))
-    
-    
-    #obj_list.append(db.test.findAndModify({'query': {'name': 'andy'}, 'sort': {'rating': 1}, 'update': {'$inc': {'score': 1}}, 'upsert': 'true'})) # find找到的记录如何返回，以便modify修改，并且只对一个记录进行增、删、改的sql语句的写法。
-
-
-
-    for obj in obj_list:
-        print obj.to_sql()
-    
     import test
     t = test.Test()
     t.main()
