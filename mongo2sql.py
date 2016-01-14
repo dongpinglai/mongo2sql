@@ -177,12 +177,10 @@ class Db(dict, ExtractSql):
         return ResetError(self)
 
     def runCommand(self, command):
-        raise ValueError('runCommand unsupported')
-        #return RunCommand(self, command)
+        return RunCommand(self, command)
 
     def serverBuildInfo(self):
-        raise ValueError('serverBuildInfo unsupported')
-        #return ServerBuildInfo(self)
+        return ServerBuildInfo(self)
 
     def serverCmdLineOpts(self):
         raise ValueError('serverCmdBuildInfo unsupported')
@@ -291,7 +289,11 @@ class ServerStatus(object, ExtractSql):
 
 
 class ServerBuildInfo(object, ExtractSql):
-    pass
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return "SELECT VERSION()"
     
 
 class ServerCmdLineOpts(object, ExtractSql):
@@ -461,7 +463,13 @@ class GetCollectionNames(object, ExtractSql):
 
 
 class GetLastError(object, ExtractSql):
-    pass
+    def __init__(self, db, w, wtimeout):
+        self.db = db
+        self.w = w
+        self.wtimeout = wtimeout
+
+    def to_sql(self):
+        raise ValueError('GetLastError can\'t To_sql()')
 
 
 class GetLastErrorObj(object, ExtractSql):
@@ -570,6 +578,14 @@ class ListCommands(object, ExtractSql):
         return Help(self.db).to_sql()
 
 
+class ListDatabases(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return "SHOW DATABASES"
+
+
 class LoadServerScripts(object, ExtractSql):
     pass
 
@@ -618,6 +634,15 @@ class ResetError(object, ExtractSql):
     def to_sql(self):
         return GetPrevError(self.db).to_sql()
 
+
+class Ping(object, ExtractSql):
+    def __init__(self, db):
+        self.db = db
+
+    def to_sql(self):
+        return 'SHOW PROCESSLIST'
+
+
     
 class RunCommand(object, ExtractSql):
     def __init__(self, db, command):
@@ -625,11 +650,425 @@ class RunCommand(object, ExtractSql):
         self.command = command
 
     def to_sql(self):
-        commands = ['createColletion']
-        if isinstance(self.command, str):
+        cmd_doc = self.command
+        if isinstance(cmd_doc, str):
             pass
-        elif isinstance(self.command, dict):
-            pass
+        elif isinstance(cmd_doc, dict):
+            if 'drop' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('drop'))
+                return Drop(table).to_sql()
+                              
+            elif 'buildInfo' in cmd_doc.keys():
+                if cmd_doc.get('buildInfo') == 1:
+                    return ServerBuildInfo(self.db).to_sql()
+                              
+            elif 'collStats' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('collStats'))
+                return Stats(table).to_sql()
+
+                
+            elif 'distinct' if cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('distinct'))
+                key_val = cmd_doc.get('key')
+                query_val = cmd_doc.get('query')
+                return Distinct(table, key_val, query_val).to_sql()
+
+            elif 'dropDatabase' in cmd_doc.keys():
+                if cmd_doc.get('dropDatabase') == 1:
+                    return DropDatabase(self.db).to_sql()
+            elif 'dropIndexes' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('dropIndexes'))
+                index_name = cmd_doc.get('index')
+                if index_name == '*':
+                    return DropIndexes(table).to_sql()
+                else:
+                    return DropIndex(table, index_name).to_sql()
+                
+            elif 'findAndModify' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('findAndModify'))
+                doc = cmd_doc.copy()
+                del doc['findAndModify']
+                return FindAndModify(table, doc).to_sql()
+
+            elif 'getLastError' in  cmd_doc.keys():
+                if cmd_doc.get('getLastError') == 1:
+                    doc = cmd_doc.copy()
+                    del doc['getLastError']
+                    options = doc
+                    return GetLastError(self.db, options).to_sql()
+                
+            elif 'isMaster' in cmd_doc.keys():
+                if cmd_doc.get('isMaster') == 1:
+                    return IsMaster(self.db).to_sql()
+            elif 'listCommands' in cmd_doc.keys():
+                if cmd_doc.get('listCommand') == 1:
+                    return ListCommands(self.db).to_sql()
+            elif 'listDatabases' in cmd_doc.keys():
+                if cmd_doc.get('listDatabases') == 1:
+                    return ListDatabases(self.db).to_sql()
+            elif 'ping' in cmd_doc.keys():
+                if cmd_doc.get('ping') == 1:
+                    return Ping(self.db).to_sql()
+            elif 'renameCollection' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('renameCollection'))
+                new_name = cmd_doc.get('target')
+                return RenameCollection(table, new_name)
+
+            elif 'repairDatabase' in cmd_doc.keys():
+                if cmd_doc.get('repairDatabase') == 1:
+                    return RepairDatabase(self.db).to_sql()
+
+            elif 'serverStatus' in cmd_doc.keys():
+                if cmd_doc.get('serverStatus') == 1:
+                    return ServerStatus(self.db).to_sql()
+            elif 'cloneCollection' in cmd_doc.keys():
+                if cmd_doc.get('cloneCollection') == 1:
+                    frm = cmd_doc.get('from')
+                    coll_name = cmd_doc.get('collection')
+                    query = cmd_doc.get('query', None)
+                    return CloneCollection(self.db, frm, coll_name, query).to_sql()
+            elif 'cloneDatabase' in cmd_doc.keys():
+                if cmd_doc.get('cloneDatabase') == 1:
+                    host_name = cmd_doc.get('hostname')
+                    return CloneDatabase(self.db, host_name).to_sql()
+            elif 'commandHelp' in cmd_doc.keys():
+                if  cmd_doc.get('commandHelp') == 1:
+                    cmd = cmd_doc.get('command')
+                    return CommandHelp(self.db, cmd).to_sql()
+            elif 'copyDatabase' in cmd_doc.keys():
+                if cmd_doc.get('copyDatabase') == 1:
+                    frm_db = cmd_doc.get('fromdb')
+                    to_db = cmd_doc.get('todb')
+                    frm_host = cmd_doc.get('fromhost', None)
+                    user_name = cmd_doc.get("username", None)
+                    password = cmd_doc.get('password', None)
+                    mechanism = cmd_doc.get('mechanism', None)
+                    return CopyDatabase(self.db, frm_db, to_db, user_name, password, mechanism).to_sql()
+
+            elif 'createCollection' in cmd_doc.keys():
+                if cmd_doc.get('createCollection') == 1:
+                    coll_name = cmd_doc.get('name')
+                    del cmd_doc['createCollection']
+                    options = cmd_doc
+                    return CreateCollection(self.db, name, options).to_sql()
+            elif 'currentOp' in cmd_doc.keys():
+                if cmd_doc.get('currentOp') == 1:
+                    operations = cmd_doc.get('operations')
+                    return CurrentOp(self.db, operations).to_sql()
+            elif 'dropDatabase' in cmd_doc.keys():
+                if cmd_doc.get('dropDatabase') == 1:
+                    return DropDatabase(self.db).to_sql()
+
+            elif 'eval' in cmd_doc.keys():
+                if cmd_doc.get('eval') == 1:
+                    func = cmd_doc.get('function')
+                    args = cmd_doc.get('arguments', None)
+                    return Eval(self.db, func, args).to_sql()
+            elif 'fsyncLock' in cmd_doc.keys():
+                if cmd_doc.get('fsyncLock') == 1:
+                    return FsyncLock(self.db).to_sql()
+            elif 'fsyncUnlock' in cmd_doc.keys():
+                if cmd_doc.get('fsyncUnlock') == 1:
+                    return FsyncUnlock(self.db).to_sql()
+            elif 'getCollection' in cmd_doc.keys():
+                if cmd_doc.get('getCollection') == 1:
+                    coll_name = cmd_doc.get('name')
+                    return GetCollection(self.db, coll_name).to_sql()
+            elif 'getCollectionInfos' in cmd_doc.keys():
+                if cmd_doc.get('getCollectionInfos') == 1:
+                    return GetCollectionInfos(self.db).to_sql()
+            elif 'getCollectionNames' in cmd_doc.keys():
+                if cmd_doc.get('getCollectionNames') == 1:
+                    return GetCollectionNames(self.db).to_sql()
+            elif 'getLastErrorObj' in cmd_doc.keys():
+                if cmd_doc.get('getLastErrorObj') == 1:
+                    return GetLastErrorObj(self.db).to_sql()
+            elif 'getLogComponents' in cmd_doc.keys():
+                if cmd_doc.get('getLogComponents') == 1:
+                    return GetLogComponents(self.db).to_sql()
+            elif 'getMongo' in cmd_doc.keys():
+                if cmd_doc.get('getMongo') == 1:
+                    return GetMongo(self.db).to_sql()
+            elif 'getName' in cmd_doc.keys():
+                if cmd_doc.get('getName') == 1:
+                    return GetName(self.db).to_sql()
+            elif 'getPrevError' in cmd_doc.keys():
+                if cmd_doc.get('getPrevError') == 1:
+                    return GetPrevError(self.db).to_sql()
+            elif 'getProfilingLevel' in cmd_doc.keys():
+                if cmd_doc.get('getProfilingLevel') == 1:
+                    return GetProfilingLevel(self.db).to_sql()
+            elif 'getProfilingStatus' in cmd_doc.keys():
+                if cmd_doc.get('getProfilingStatus') == 1:
+                    return GetProfilingStatus(self.db).to_sql()
+            elif 'getReplicationInfo' in cmd_doc.keys():
+                if cmd_doc.get('getReplicationInfo') == 1:
+                    return GetReplicationInfo(self.db).to_sql()
+            elif 'getSiblingDB' in cmd_doc.keys():
+                if cmd_doc.get('getSiblingDB') == 1:
+                    db_name = cmd_doc.get('database')
+                    return GetSiblingDB(self.db, db_name).to_sql()
+
+            elif 'help' in cmd_doc.keys():
+                if cmd_doc.get('help') == 1:
+                    return Help(self.db).to_sql()
+            elif 'hostInfo' in cmd_doc.keys():
+                if cmd_doc.get('hostInfo') == 1:
+                    return HostInfo(self.db).to_sql()
+            elif 'killOp' in cmd_doc.keys():
+                if cmd_doc.get('killOp') == 1:
+                    op_id = cmd_doc.get('opid')
+                    return KillOp(self.db, op_id).to_sql()
+            elif 'loadServerScripts' in cmd_doc.keys():
+                if cmd_doc.get('loadServerScripts') == 1:
+                    return LoadServerScripts(self.db).to_sql()
+            elif 'logout' in cmd_doc.keys():
+                if cmd_doc.get('logout') == 1:
+                    return Logout(self.db).to_sql()
+            elif 'printCollectionStats' in cmd_doc.keys():
+                if cmd_doc.get('printCollectionStats') == 1:
+                    return PringCollectionStats(self.db).to_sql()
+            elif 'printReplicationInfo' in cmd_doc.keys():
+                if cmd_doc.get('printReplicationInfo') == 1:
+                    return PrintReplicationInfo(self.db).to_sql()
+            elif 'printShardingStatus' in cmd_doc.keys():
+                if cmd_doc.get('printShardingStatus') == 1:
+                    verbose = cmd_doc.get('verbose', False)
+                    return PrintShardingStatus(self.db, verbose).to_sql()
+            elif 'printSlaveReplicationInfo' in cmd_doc.keys():
+                if cmd_doc.get('printSlaveReplicationInfo') == 1:
+                    return PrintSlaveReplicationInfo(self.db).to_sql()
+            elif 'resetError' in cmd_doc.keys():
+                if cmd_doc.get('resetError') == 1:
+                    return ResetError(self.db).to_sql()
+            elif 'serverBuildInfo' in cmd_doc.keys():
+                if cmd_doc.get('serverBuildInfo') == 1:
+                    return ServerBuildInfo(self.db).to_sql()
+            elif 'serverCmdLineOpts' in cmd_doc.keys():
+                if cmd_doc.get('serverCmdLineOpts') == 1:
+                    return ServerCmdLineOpts(self.db).to_sql()
+            elif 'setLogLevel' in cmd_doc.keys():
+                if cmd_doc.get('setLogLevel') == 1:
+                    level = cmd_doc.get('level')
+                    component = cmd_doc.get('component', None)
+                    return SetLogLevel(self.db, level, component).to_sql()
+            elif 'setProfilingLevel' in cmd_doc.keys():
+                if cmd_doc.get('setProfilingLevel') == 1:
+                    lev = cmd_doc.get('level')
+                    slowms = cmd_doc.get('slowms', None)
+                    return SetProfilingLevel(self.db, lev, slowms).to_sql()
+            elif 'shutdownServer' in cmd_doc.keys():
+                if cmd_doc.get('shutdownServer') == 1:
+                    return ShutdwonServer(self.db).to_sql()
+            elif 'stats' in cmd_doc.keys():
+                if cmd_doc.get('stats') == 1:
+                    scale = cmd_doc.get('scale')
+                    return Stats(self.db, scale).to_sql()
+            elif 'version' in cmd_doc.keys():
+                if cmd_doc.get('version') == 1:
+                    return Version(self.db).to_sql()
+            elif 'upgradeCheck' in cmd_doc.keys():
+                if cmd_doc.get('upgradeCheck') == 1:
+                    scope = cmd_doc.get('scope', None)
+                    return UpgradeCheck(self.db, scope).to_sql()
+            elif 'upgradeCheckAllDB' in cmd_doc.keys():
+                if cmd_doc.get('upgradeCheckAllDB') == 1:
+                    return UpgradeCheckAllDB(self.db).to_sql()
+            ## collection methods ## 
+            elif 'aggregate' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('aggregate'))
+                pipeline = cmd_doc.get('pipeline')
+                ag_opts = cmd_doc.get('options')
+                return Aggregate(table, pipeline, ag_opts).to_sql()
+            elif 'bulkWrite' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('bulkWrite'))
+                bw_ops = cmd_doc.get('operations')
+                bw_wc = cmd_doc.get('writeConcern', None)
+                return BulkWrite(table, bw_ops, bw_wc).to_sql()
+            elif 'count' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('count'))
+                cot_query = cmd_doc.get('query')
+                return Count(table, cot_query).to_sql()
+            elif 'copyTo' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('copyTo'))
+                new_coll = cmd_doc.get('newCollection')
+                return CopyTo(table, new_coll).to_sql()
+            elif 'createIndex' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('createIndex'))
+                ci_keys = cmd_doc.get('keys')
+                ci_opts = cmd_doc.get('options', None)
+                return CreateIndex(table, ci_keys, ci_opts).to_sql()
+            elif 'dataSize' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('dataSize'))
+                return DataSize(table).to_sql()
+            elif 'deleteOne' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('deleteOne'))
+                query = cmd_doc.get('filter')
+                w_c = cmd_doc.get('writeConcern', None)
+                return DeleteOne(table, query, w_c).to_sql()
+            elif 'deleteMany' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('deleteMany'))
+                w_c = cmd_doc.get('writeConcern', None)
+                return DeleteMany(table, w_c).to_sql()
+            elif 'dropIndex' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('dropIndex'))
+                index_name = cmd_doc.get('index')
+                return DropIndex(table, index_name).to_sql()
+            elif 'dropIndexes' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('dropIndexes'))
+                return DropIndexes(table).to_sql()
+            elif 'ensureIndex' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('ensureIndex'))
+                keys = cmd_doc.get('keys')
+                options = cmd_doc.get('options', None)
+                return EnsureIndex(table, keys, options).to_sql()
+            elif 'explain' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('explain'))
+                verbosity = cmd_doc.get('verbosity', None)
+                return Explain(table, verbosity).to_sql()
+            elif 'find' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('find'))
+                query = cmd_doc.get('query',None)
+                projection = cmd_doc.get('projection', None)
+                return Find(table, query, projection).to_sql()
+            elif 'findOne' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('findOne'))
+                query = cmd_doc.get('query', None)
+                projection = cmd_doc.get('projection', None)
+                return FindOne(table, query, projection).to_sql()
+            elif 'findOneAndDelete' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('findOneAndDelete'))
+                query = cmd_doc.get('filter', None)
+                options = cmd_doc.get('options', None)
+                return FindOneAndDelete(table, query, options).to_sql()
+            elif 'findOneAndReplace' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('findOneAndReplace'))
+                query = cmd_doc.get('filter', None)
+                replacement = cmd_doc.get('replacement')
+                options = cmd_doc.get('options', None)
+                return FindOneAndReplace(table, query, replacement, options).to_sql()
+            elif 'findOneAndUpdate' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('findOneAndUpdate'))
+                query = cmd_doc.get('filter', None)
+                update = cmd_doc.get('update')
+                options = cmd_doc.get('options', None)
+                return FindOneAndUpdate(table, query, update, options).to_sql()
+            elif 'getIndexes' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('getIndexes'))
+                return GetIndexes(table).to_sql()
+            elif 'getShardDistribution' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('getShardDistribution'))
+                return GetShardDistribution(table).to_sql()
+            elif 'getShardVersion' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('getShardVersion'))
+                return GetShardVersion(table).to_sql()
+            elif 'group' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('group'))
+                del cmd_doc['group']
+                doc = cmd_doc
+                return Group(table, doc).to_sql()
+            elif 'insert' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('insert'))
+                doc = cmd_doc.get('document')
+                w_c = cmd_doc.get('writeConcern', None)
+                ordered = cmd_doc.get('ordered', False)
+                return Insert(table, doc, w_c, ordered).to_sql()
+            elif 'insertOne' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('insertOne'))
+                doc = cmd_doc.get('document')
+                w_c = cmd_doc.get('writeConcern', None)
+                return InsertOne(table, doc, w_c).to_sql()
+            elif 'insertMany' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('insertMany'))
+                docs = cmd_doc.get('document')
+                del cmd_doc['insertMany']
+                del cmd_doc['document']
+                options = cmd_doc
+                #w_c = cmd_doc.get('writeConcern', None)
+                #ordered = cmd_doc.get('ordered', None)
+                return InsertMany(table, docs, options).to_sql()
+            elif 'isCapped' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('isCapped'))
+                return IsCapped(table).to_sql()
+            elif 'mapReduce' in cmd_doc.get('mapReduce'):
+                table = Table(self.db, cmd_doc.get('mapReduce'))
+                map_func = cmd_doc.get('map')
+                reduce_func = cmd_doc.get('reduce')
+                del cmd_doc['mapReduce']
+                del cmd_doc['map']
+                del cmd_doc['reduce']
+                options = cmd_doc
+                return mapReduce(table, map_func, reduce_func, options).to_sql()
+            elif 'reIndex' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('reIndex'))
+                return ReIndex(table).to_sql()
+            elif 'replaceOne' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('replaceOne'))
+                query = cmd_doc.get('filter')
+                replacement = cmd_doc.get('replacement')
+                del cmd_doc['replaceOne']
+                del cmd_doc['filter']
+                del cmd_doc['replacement']
+                options = cmd_doc
+                return replaceOne(table, query, replacement, options).to_sql()
+            elif 'remove' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('remove'))
+                query = cmd_doc.get('filter')
+                del cmd_doc['remove']
+                del cmd_doc['filter']
+                options = cmd_doc
+                return Remove(table, query, options).to_sql()
+            elif 'save' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('save'))
+                doc = cmd_doc.get('document')
+                w_c = cmd_doc.get('writeConcern')
+                return Save(table, doc, w_c).to_sql()
+            elif 'stats' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('stats'))
+                scale = cmd_get('scale', None)
+                options = cmd_get('options', None)
+                return Stats(table, scale, options).to_sql()
+            elif 'storageSize' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('storageSize'))
+                return StorageSize(table).to_sql()
+            elif 'totalSize' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('totalSize'))
+                return TotalSize(table).to_sql()
+            elif 'totalIndexSize' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('totalIndexSize'))
+                return TotalIndexSize(table).to_sql()
+            elif 'Update' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('Update'))
+                query = cmd_doc.get('query')
+                update = cmd_doc.get('update')
+                del cmd_doc['update']
+                del cmd_doc['Update']
+                del cmd_doc['query']
+                options = cmd_doc
+                return Update(table, query, update, options).to_sql()
+            elif 'updateOne' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('updateOne'))
+                query = cmd_doc.get('filter')
+                update = cmd_doc.get('update')
+                del cmd_doc['updateOne']
+                del cmd_doc['filter']
+                del cmd_doc['update']
+                options = cmd_doc
+                return UpdateOne(table, query, update, options).to_sql()
+            elif 'updateMany' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('updateMany'))
+                query = cmd_doc.get('filter')
+                update = cmd_doc.get('update')
+                del cmd_doc['updateMany']
+                del cmd_doc['query']
+                del cmd_doc['update']
+                options = cmd_doc
+                return UpdateMany(table, query, update, options).to_sql()
+            elif 'validate' in cmd_doc.keys():
+                table = Table(self.db, cmd_doc.get('validate'))
+                full = cmd_doc.get('full', None)
+                return Validate(table, full).to_sql()
+
 
        
 ###classes for collection and collection methods#####                                    
@@ -746,8 +1185,8 @@ class Table(object, ExtractSql):
     def replaceOne(self, query, rep, option=None):
         return ReplaceOne(self, query, rep,option)
 
-    def renameCollection(self, new_name, option=None):
-        return RenameCollection(self, new_name, option=None)
+    def renameCollection(self, new_name, option=False):
+        return RenameCollection(self, new_name, option)
 
     def stats(self, scale=None, option=None):
         return Stats(self, scale, option)
@@ -1451,10 +1890,13 @@ class Distinct(object, ExtractSql):
 
     def to_sql(self):
         query = handle_condition(self.query)
-        if query != '':
+        if query:
             query = 'WHERE ' + query
-        return 'SELECT DISTINCT %s FROM %s %s' % (self.field, self.table.name, query)
+            return 'SELECT DISTINCT %s FROM %s %s' % (self.field, self.table.name, query)
+        else:
+            return 'SELECT DISTINCT %s FROM %s' % (self.field, self.table.name) 
 
+            
 
 class FindOne(object, ExtractSql):
     def __init__(self, table, query, projection):
@@ -1711,7 +2153,7 @@ class ReplaceOne(object, ExtractSql):
 
 
 class RenameCollection(object, ExtractSql):
-    def __init__(self, table, new_name, option=None):
+    def __init__(self, table, new_name, option=False):
         self.table = table
         self.new_name = new_name
         self.option = option
