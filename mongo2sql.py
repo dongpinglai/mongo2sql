@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-##TODO:db.runCommand()等未实现功能, 修补bug
+##TODO:db.coll.mapReduce(), db.coll.findAndXXX()，db.coll.group()完善
 
 
 import os
@@ -1176,8 +1176,8 @@ class Table(object, ExtractSql):
     def isCapped(self):
         return IsCapped(self)
 
-    def mapReduce(self, map_func, reduce_func, doc):
-        return MapReduce(self, map_func, reduce_func, doc)
+    def mapReduce(self, map_func, reduce_func, options=None):
+        return MapReduce(self, map_func, reduce_func, options)
 
     def reIndex(self):
         return ReIndex(self)
@@ -2086,7 +2086,6 @@ class Group(object, ExtractSql):
             proj_fmt = proj_fmt_list[0]
         else:
             proj_fmt = ','.join(proj_fmt_list)
-
         if len(group_fmt_list) == 0:
             return ''
         elif len(group_list_list) == 1:
@@ -2098,19 +2097,27 @@ class Group(object, ExtractSql):
     def to_sql(self):
         proj_fmt_list = []
         option_fmt_list = []
-        where_fmt = handle_condition(self.doc['cond'])
-        proj_fmt, group_fmt = self.handle_key()
+        if self.doc.get('keyf'):
+            pass
+        else:
+            proj_fmt, group_fmt = self.handle_key()
+        where_fmt = handle_condition(self.doc.get('cond', None))
         if where_fmt:
             option_fmt_list.append('WHERE ' + where_fmt)
         proj_fmt_list.append(proj_fmt)
         option_fmt_list.append(group_fmt)
+        reduce_func = self.doc.get('reduce')
+        if reduce_func:
+            #reduce_func后续处理
+            initial = self.doc.get('initial', {})
+            finalize_func = self.doc.get('finallize', None)
+            #initial\finalize_func后续处理
         if len(proj_fmt_list) == 0:
             proj_fmt = '*'
         elif len(proj_fmt_list) == 1:
             proj_fmt = proj_fmt_list[0]
         else:
             proj_fmt = ','.join(proj_fmt_list)
-            
         if len(option_fmt_list) == 1:
             option_fmt = option_fmt_list[0]
         elif len(option_fmt_list) == 0:
@@ -2121,13 +2128,12 @@ class Group(object, ExtractSql):
 
 
 class MapReduce(object, ExtractSql):
-    def __init__(self, table, map_func, reduce_func, doc):
+    def __init__(self, table, map_func, reduce_func, options=None):
         self.table = table
         self.map_func = map_func
         self.reduce_func = reduce_func
-        self.doc = doc
+        self.options = options
     
-
     def to_sql(self):
         raise ValueError('MapReduce uncompleted')
 
